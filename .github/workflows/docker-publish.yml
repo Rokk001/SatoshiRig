@@ -3,14 +3,14 @@ name: Build and Publish Docker Image
 on:
     push:
         tags:
-            - "v*"  # Always run on tags
+            - "v*"  # Always run on tags (no path restrictions)
         branches:
             - main
-        paths:
-            - 'Dockerfile'
-            - 'docker-compose.yml'
-            - '.github/workflows/docker-publish.yml'
-            - 'src/**'  # Also trigger on source code changes
+            paths:
+                - 'Dockerfile'
+                - 'docker-compose.yml'
+                - '.github/workflows/docker-publish.yml'
+                - 'src/**'
     workflow_dispatch:
         inputs:
             tag:
@@ -63,12 +63,11 @@ jobs:
               with:
                   images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                   tags: |
-                      type=ref,event=branch
-                      type=ref,event=pr
+                      type=ref,event=tag
                       type=semver,pattern={{version}}
                       type=semver,pattern={{major}}.{{minor}}
                       type=semver,pattern={{major}}
-                      type=raw,value=latest,enable={{is_default_branch}}
+                      type=raw,value=latest
 
             - name: Build and push Docker image
               uses: docker/build-push-action@v5
