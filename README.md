@@ -353,6 +353,15 @@ The web dashboard is available on port 5000 (default) when running. Access via:
 
 Disable web dashboard with `--no-web` flag or set `WEB_PORT` to 0.
 
+**Features:**
+- **Tabbed Interface**: Overview, Performance, Analytics, Intelligence, History
+- **Real-time Monitoring**: Hash rate, CPU, Memory, GPU usage and temperature
+- **Mining Intelligence**: Estimated time to block (formatted in years/months/days), block found probability, profitability calculator
+- **Visualizations**: Hash rate history, difficulty trends, performance metrics charts
+- **Human-readable Formatting**: 
+  - Hash values display with magnitude units (K, M, G, T, P, E) - e.g., "145.79 KH/s" instead of "145788.53 H/s"
+  - Time estimates display in years, months, and days - e.g., "145883385836 Jahre, 0 Monate, 26.5 Tage"
+
 ### Configuration
 
 `config/config.toml` controls pool, network, logging, and mining parameters.
@@ -399,7 +408,10 @@ Switching network source:
 
 ### Notes
 
-- GPU mining support is implemented with CUDA/OpenCL backends. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) for improved performance. For optimal performance, GPU kernels can be further optimized.
+- **GPU Mining**: GPU mining support is implemented with CUDA/OpenCL backends. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) for improved performance. For optimal performance, GPU kernels can be further optimized.
+- **Web Dashboard Formatting**: 
+  - Hash values (Hash Rate, Peak Hash Rate, Average Hash Rate, Total Hashes) are automatically formatted with magnitude units (K, M, G, T, P, E) for better readability.
+  - Estimated time to block is displayed in years, months, and days for easier comprehension of very large time periods.
 
 ### Releases
 

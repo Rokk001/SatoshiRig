@@ -48,7 +48,9 @@ Updated: 2025-01-05
 - Mining Control: Pause button now stops mining via API endpoints (`/api/stop`, `/api/start`).
 - UI Improvements: Removed redundant "Connected" button, improved visual hierarchy with section headers.
 - GPU Mining Support: Implemented CUDA/OpenCL support with parallel batch hashing (1024 nonces per iteration), automatic GPU initialization, fallback to CPU if GPU unavailable.
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed).
+- Time Formatting: "Estimated Time to Block" now displays in years, months, and days (e.g., "145883385836 Jahre, 0 Monate, 26.5 Tage" instead of "53247435828136.5d").
+- Hash Value Formatting: Hash values now display with magnitude units (K, M, G, T, P, E) for better readability (e.g., "145.79 KH/s" instead of "145788.53 H/s", "82.33 MH" instead of "82332425 H").
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units).
 
 ## Open Items / Next Steps
 - ✅ GPU mining support implemented (CUDA/OpenCL with parallel batch hashing)
