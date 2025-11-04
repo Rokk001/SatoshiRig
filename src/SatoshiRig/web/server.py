@@ -219,11 +219,11 @@ def format_time_to_block(seconds: float) -> str:
         
         parts = []
         if years > 0:
-            parts.append(f"{years} {'Jahr' if years == 1 else 'Jahre'}")
+            parts.append(f"{years} {'year' if years == 1 else 'years'}")
         if months > 0:
-            parts.append(f"{months} {'Monat' if months == 1 else 'Monate'}")
+            parts.append(f"{months} {'month' if months == 1 else 'months'}")
         if days > 0 or len(parts) == 0:
-            parts.append(f"{days:.1f} {'Tag' if days == 1 else 'Tage'}")
+            parts.append(f"{days:.1f} {'day' if days == 1 else 'days'}")
         
         return ", ".join(parts)
 
@@ -1420,13 +1420,13 @@ INDEX_HTML = """
                     
                     const parts = [];
                     if (years > 0) {
-                        parts.push(years + ' ' + (years === 1 ? 'Jahr' : 'Jahre'));
+                        parts.push(years + ' ' + (years === 1 ? 'year' : 'years'));
                     }
                     if (months > 0) {
-                        parts.push(months + ' ' + (months === 1 ? 'Monat' : 'Monate'));
+                        parts.push(months + ' ' + (months === 1 ? 'month' : 'months'));
                     }
                     if (days > 0 || parts.length === 0) {
-                        parts.push(days.toFixed(1) + ' ' + (days === 1 ? 'Tag' : 'Tage'));
+                        parts.push(days.toFixed(1) + ' ' + (days === 1 ? 'day' : 'days'));
                     }
                     
                     document.getElementById('estimatedTimeToBlock').textContent = parts.join(', ');
