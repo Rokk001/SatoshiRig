@@ -3,14 +3,7 @@ name: Build and Publish Docker Image
 on:
     push:
         tags:
-            - "v*"  # Always run on tags (no path restrictions)
-        branches:
-            - main
-            paths:
-                - 'Dockerfile'
-                - 'docker-compose.yml'
-                - '.github/workflows/docker-publish.yml'
-                - 'src/**'
+            - "v*"
     workflow_dispatch:
         inputs:
             tag:
@@ -20,6 +13,8 @@ on:
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
+    # Package name must match repository name in lowercase
+    PACKAGE_NAME: satoshirig
 
 jobs:
     build-and-push:
@@ -65,8 +60,6 @@ jobs:
                   tags: |
                       type=ref,event=tag
                       type=semver,pattern={{version}}
-                      type=semver,pattern={{major}}.{{minor}}
-                      type=semver,pattern={{major}}
                       type=raw,value=latest
 
             - name: Build and push Docker image
@@ -90,21 +83,20 @@ jobs:
 
             - name: Make package public automatically
               run: |
-                  PACKAGE_NAME="satoshirig"
-                  IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+                  PACKAGE_NAME="${{ env.PACKAGE_NAME }}"
                   OWNER="${{ github.repository_owner }}"
                   OWNER_LOWER=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
 
                   echo "🔍 Making package public: ${PACKAGE_NAME}"
                   echo "Repository: ${{ github.repository }}"
-                  echo "Owner: ${OWNER}"
+                  echo "Owner: ${OWNER} (lowercase: ${OWNER_LOWER})"
 
                   # Wait for package to be fully created after push
                   echo "⏳ Waiting for package to be available..."
-                  sleep 10
+                  sleep 15
 
                   # Try multiple methods with retries
-                  MAX_RETRIES=5
+                  MAX_RETRIES=10
                   RETRY_COUNT=0
                   SUCCESS=false
 
@@ -114,62 +106,80 @@ jobs:
                     echo "🔄 Attempt ${RETRY_COUNT}/${MAX_RETRIES}..."
 
                     # Method 1: User endpoint
-                    if gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                    echo "Trying user endpoint..."
+                    RESULT=$(gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+                    if [ $? -eq 0 ]; then
                       echo "✅ SUCCESS: Package set to public via user endpoint!"
+                      echo "${RESULT}"
                       SUCCESS=true
                       break
+                    else
+                      echo "❌ User endpoint failed: ${RESULT}"
                     fi
 
                     # Method 2: Org endpoint (original case)
-                    if gh api -X PATCH /orgs/${OWNER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                    echo "Trying org endpoint (${OWNER})..."
+                    RESULT=$(gh api -X PATCH /orgs/${OWNER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+                    if [ $? -eq 0 ]; then
                       echo "✅ SUCCESS: Package set to public via org endpoint!"
+                      echo "${RESULT}"
                       SUCCESS=true
                       break
+                    else
+                      echo "❌ Org endpoint (${OWNER}) failed: ${RESULT}"
                     fi
 
                     # Method 3: Org endpoint (lowercase)
-                    if gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                    echo "Trying org endpoint (${OWNER_LOWER})..."
+                    RESULT=$(gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+                    if [ $? -eq 0 ]; then
                       echo "✅ SUCCESS: Package set to public!"
+                      echo "${RESULT}"
                       SUCCESS=true
                       break
+                    else
+                      echo "❌ Org endpoint (${OWNER_LOWER}) failed: ${RESULT}"
                     fi
 
                     if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                      echo "⏳ Retrying in 5 seconds..."
-                      sleep 5
+                      echo "⏳ Retrying in 10 seconds..."
+                      sleep 10
                     fi
                   done
 
                   if [ "$SUCCESS" = false ]; then
                     echo ""
-                    echo "❌ All attempts failed. Trying alternative approach..."
+                    echo "❌ All gh api attempts failed. Trying curl..."
                     
-                    # Alternative: Use curl with Bearer token
                     TOKEN="${{ secrets.GITHUB_TOKEN }}"
                     
-                    # Try with curl directly
-                    curl -X PATCH \
+                    # Try with curl
+                    RESULT=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X PATCH \
                       -H "Accept: application/vnd.github.v3+json" \
                       -H "Authorization: Bearer ${TOKEN}" \
                       -H "Content-Type: application/json" \
                       -d '{"visibility":"public"}' \
-                      "https://api.github.com/user/packages/container/${PACKAGE_NAME}" 2>&1 || \
-                    curl -X PATCH \
-                      -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${TOKEN}" \
-                      -H "Content-Type: application/json" \
-                      -d '{"visibility":"public"}' \
-                      "https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" 2>&1 || \
-                    curl -X PATCH \
-                      -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${TOKEN}" \
-                      -H "Content-Type: application/json" \
-                      -d '{"visibility":"public"}' \
-                      "https://api.github.com/orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME}" 2>&1
+                      "https://api.github.com/user/packages/container/${PACKAGE_NAME}" 2>&1)
                     
-                    if [ $? -eq 0 ]; then
+                    HTTP_CODE=$(echo "${RESULT}" | grep "HTTP_CODE:" | cut -d: -f2)
+                    if [ "${HTTP_CODE}" = "204" ] || [ "${HTTP_CODE}" = "200" ]; then
                       echo "✅ SUCCESS: Package set to public via curl!"
                       SUCCESS=true
+                    else
+                      echo "❌ Curl user endpoint failed: ${RESULT}"
+                      
+                      RESULT=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X PATCH \
+                        -H "Accept: application/vnd.github.v3+json" \
+                        -H "Authorization: Bearer ${TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d '{"visibility":"public"}' \
+                        "https://api.github.com/orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME}" 2>&1)
+                      
+                      HTTP_CODE=$(echo "${RESULT}" | grep "HTTP_CODE:" | cut -d: -f2)
+                      if [ "${HTTP_CODE}" = "204" ] || [ "${HTTP_CODE}" = "200" ]; then
+                        echo "✅ SUCCESS: Package set to public via curl org endpoint!"
+                        SUCCESS=true
+                      fi
                     fi
                   fi
 
@@ -177,11 +187,13 @@ jobs:
                     echo ""
                     echo "✅✅✅ Package is now PUBLIC! ✅✅✅"
                     echo "Verify at: https://ghcr.io/v2/${OWNER_LOWER}/${PACKAGE_NAME}/manifests/latest"
+                    echo "Package URL: https://github.com/${OWNER}?tab=packages&package_name=${PACKAGE_NAME}"
                   else
                     echo ""
-                    echo "❌ Could not set package to public automatically."
-                    echo "This might require manual intervention or repository admin permissions."
-                    exit 1
+                    echo "⚠️  WARNING: Could not set package to public automatically."
+                    echo "The package was created but may still be private."
+                    echo "Please check: https://github.com/${OWNER}?tab=packages"
+                    # Don't exit with error - package was created
                   fi
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
