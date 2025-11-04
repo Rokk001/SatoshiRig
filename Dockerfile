@@ -4,6 +4,14 @@
 # SatoshiRig - Bitcoin solo mining client
 FROM python:3.11-slim
 
+# Install system dependencies for GPU support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    make \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 

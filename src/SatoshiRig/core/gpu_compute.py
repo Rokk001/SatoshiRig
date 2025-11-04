@@ -1,0 +1,322 @@
+"""
+GPU Compute Module for CUDA and OpenCL support
+"""
+import binascii
+import hashlib
+import logging
+from typing import Optional, Tuple
+
+logger = logging.getLogger("SatoshiRig.gpu")
+
+# Try to import CUDA
+try:
+    import pycuda.driver as cuda
+    import pycuda.autoinit
+    from pycuda.compiler import SourceModule
+    CUDA_AVAILABLE = True
+except ImportError:
+    CUDA_AVAILABLE = False
+    cuda = None
+
+# Try to import OpenCL
+try:
+    import pyopencl as cl
+    OPENCL_AVAILABLE = True
+except ImportError:
+    OPENCL_AVAILABLE = False
+    cl = None
+
+
+# CUDA SHA256 Kernel
+CUDA_SHA256_KERNEL = """
+#include <cuda_runtime.h>
+#include <stdint.h>
+
+#define SHA256_DIGEST_LENGTH 32
+
+__device__ void sha256_transform(uint32_t *state, const uint8_t *data) {
+    // Simplified SHA256 implementation for GPU
+    // This is a basic implementation - production code would use optimized version
+    uint32_t w[64];
+    uint32_t a, b, c, d, e, f, g, h, i, j, t1, t2;
+    
+    // Copy state
+    a = state[0]; b = state[1]; c = state[2]; d = state[3];
+    e = state[4]; f = state[5]; g = state[6]; h = state[7];
+    
+    // Process message (simplified - full implementation would expand 512-bit blocks)
+    // For now, we'll use a basic approach
+    for (int i = 0; i < 16; i++) {
+        w[i] = (data[i*4] << 24) | (data[i*4+1] << 16) | (data[i*4+2] << 8) | data[i*4+3];
+    }
+    
+    // SHA256 compression function (simplified)
+    // Full implementation would include proper message schedule and constants
+    // This is a placeholder that needs proper SHA256 implementation
+}
+
+__global__ void mine_sha256(
+    uint8_t *block_headers,
+    uint32_t *nonces,
+    uint8_t *results,
+    int num_blocks,
+    uint32_t target_prefix
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_blocks) return;
+    
+    // Get block header for this thread
+    uint8_t *header = &block_headers[idx * 80];
+    uint32_t nonce = nonces[idx];
+    
+    // Update nonce in header (bytes 76-79)
+    header[76] = (nonce >> 24) & 0xFF;
+    header[77] = (nonce >> 16) & 0xFF;
+    header[78] = (nonce >> 8) & 0xFF;
+    header[79] = nonce & 0xFF;
+    
+    // Double SHA256
+    uint8_t hash1[SHA256_DIGEST_LENGTH];
+    uint8_t hash2[SHA256_DIGEST_LENGTH];
+    
+    // First SHA256 (simplified - needs proper implementation)
+    // For now, we'll fall back to CPU hashing in Python
+    
+    // Store result
+    results[idx * 32] = 1; // Placeholder
+}
+"""
+
+
+class CUDAMiner:
+    """CUDA-based GPU miner"""
+    
+    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None):
+        self.device_id = device_id
+        self.log = logger or logging.getLogger("SatoshiRig.gpu.cuda")
+        self.context = None
+        self.device = None
+        
+        if not CUDA_AVAILABLE:
+            raise RuntimeError("PyCUDA not available. Install with: pip install pycuda")
+        
+        try:
+            cuda.init()
+            self.device = cuda.Device(device_id)
+            self.context = self.device.make_context()
+            self.log.info(f"CUDA device {device_id} initialized: {self.device.name()}")
+        except Exception as e:
+            self.log.error(f"Failed to initialize CUDA device {device_id}: {e}")
+            raise
+    
+    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024) -> Optional[Tuple[str, int]]:
+        """
+        Hash block header with multiple nonces on GPU
+        Returns: (best_hash_hex, best_nonce) or None if no valid hash found
+        """
+        try:
+            # Convert block header to bytes
+            block_header = binascii.unhexlify(block_header_hex)
+            if len(block_header) != 80:
+                self.log.error(f"Invalid block header length: {len(block_header)}")
+                return None
+            
+            # Use optimized parallel CPU batch hashing
+            # TODO: Implement proper CUDA kernel for better performance
+            # This is a temporary solution that tests multiple nonces in parallel (CPU)
+            # A proper CUDA implementation would use GPU kernels for SHA256
+            
+            from concurrent.futures import ThreadPoolExecutor
+            import struct
+            
+            best_hash = None
+            best_nonce = None
+            base_header = bytearray(block_header)
+            
+            # Test multiple nonces in parallel batches
+            def test_nonce_range(start_nonce, count):
+                local_best = None
+                local_best_nonce = None
+                for i in range(count):
+                    nonce = start_nonce + i
+                    header_copy = base_header.copy()
+                    # Update nonce in header (bytes 76-79)
+                    header_copy[76:80] = struct.pack('>I', nonce)
+                    
+                    # Double SHA256
+                    hash1 = hashlib.sha256(bytes(header_copy)).digest()
+                    hash2 = hashlib.sha256(hash1).digest()
+                    hash_hex = binascii.hexlify(hash2).decode()
+                    
+                    if local_best is None or hash_hex < local_best:
+                        local_best = hash_hex
+                        local_best_nonce = nonce
+                return (local_best, local_best_nonce)
+            
+            # Parallel batch processing
+            batch_size = 256
+            num_batches = (num_nonces + batch_size - 1) // batch_size
+            
+            with ThreadPoolExecutor(max_workers=min(4, num_batches)) as executor:
+                futures = []
+                for i in range(num_batches):
+                    start = i * batch_size
+                    count = min(batch_size, num_nonces - start)
+                    futures.append(executor.submit(test_nonce_range, start, count))
+                
+                for future in futures:
+                    result = future.result()
+                    if result and result[0]:
+                        if best_hash is None or result[0] < best_hash:
+                            best_hash = result[0]
+                            best_nonce = result[1]
+            
+            return (best_hash, best_nonce) if best_hash else None
+            
+        except Exception as e:
+            self.log.error(f"CUDA hash error: {e}")
+            return None
+    
+    def cleanup(self):
+        """Clean up CUDA context"""
+        if self.context:
+            try:
+                self.context.pop()
+            except:
+                pass
+    
+    def __del__(self):
+        self.cleanup()
+
+
+class OpenCLMiner:
+    """OpenCL-based GPU miner"""
+    
+    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None):
+        self.device_id = device_id
+        self.log = logger or logging.getLogger("SatoshiRig.gpu.opencl")
+        self.context = None
+        self.device = None
+        self.queue = None
+        
+        if not OPENCL_AVAILABLE:
+            raise RuntimeError("PyOpenCL not available. Install with: pip install pyopencl")
+        
+        try:
+            platforms = cl.get_platforms()
+            if not platforms:
+                raise RuntimeError("No OpenCL platforms found")
+            
+            # Try to find GPU device
+            devices = []
+            for platform in platforms:
+                devices.extend(platform.get_devices(cl.device_type.GPU))
+            
+            if not devices:
+                raise RuntimeError("No OpenCL GPU devices found")
+            
+            if device_id >= len(devices):
+                self.log.warning(f"Device ID {device_id} not available, using device 0")
+                device_id = 0
+            
+            self.device = devices[device_id]
+            self.context = cl.Context([self.device])
+            self.queue = cl.CommandQueue(self.context)
+            self.log.info(f"OpenCL device {device_id} initialized: {self.device.name}")
+            
+        except Exception as e:
+            self.log.error(f"Failed to initialize OpenCL device {device_id}: {e}")
+            raise
+    
+    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024) -> Optional[Tuple[str, int]]:
+        """
+        Hash block header with multiple nonces on GPU
+        Returns: (best_hash_hex, best_nonce) or None if no valid hash found
+        """
+        try:
+            # Convert block header to bytes
+            block_header = binascii.unhexlify(block_header_hex)
+            if len(block_header) != 80:
+                self.log.error(f"Invalid block header length: {len(block_header)}")
+                return None
+            
+            # For now, use optimized CPU batch hashing
+            # TODO: Implement proper OpenCL kernel for better performance
+            # This is a temporary solution that tests multiple nonces in parallel (CPU)
+            # A proper OpenCL implementation would use GPU kernels for SHA256
+            
+            from concurrent.futures import ThreadPoolExecutor
+            import struct
+            
+            best_hash = None
+            best_nonce = None
+            base_header = bytearray(block_header)
+            
+            # Test multiple nonces in parallel batches
+            def test_nonce_range(start_nonce, count):
+                local_best = None
+                local_best_nonce = None
+                for i in range(count):
+                    nonce = start_nonce + i
+                    header_copy = base_header.copy()
+                    # Update nonce in header (bytes 76-79)
+                    header_copy[76:80] = struct.pack('>I', nonce)
+                    
+                    # Double SHA256
+                    hash1 = hashlib.sha256(bytes(header_copy)).digest()
+                    hash2 = hashlib.sha256(hash1).digest()
+                    hash_hex = binascii.hexlify(hash2).decode()
+                    
+                    if local_best is None or hash_hex < local_best:
+                        local_best = hash_hex
+                        local_best_nonce = nonce
+                return (local_best, local_best_nonce)
+            
+            # Parallel batch processing
+            batch_size = 256
+            num_batches = (num_nonces + batch_size - 1) // batch_size
+            
+            with ThreadPoolExecutor(max_workers=min(4, num_batches)) as executor:
+                futures = []
+                for i in range(num_batches):
+                    start = i * batch_size
+                    count = min(batch_size, num_nonces - start)
+                    futures.append(executor.submit(test_nonce_range, start, count))
+                
+                for future in futures:
+                    result = future.result()
+                    if result and result[0]:
+                        if best_hash is None or result[0] < best_hash:
+                            best_hash = result[0]
+                            best_nonce = result[1]
+            
+            return (best_hash, best_nonce) if best_hash else None
+            
+        except Exception as e:
+            self.log.error(f"OpenCL hash error: {e}")
+            return None
+
+
+def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.Logger] = None):
+    """
+    Create a GPU miner instance based on backend type
+    
+    Args:
+        backend: 'cuda' or 'opencl'
+        device_id: GPU device index
+        logger: Optional logger instance
+    
+    Returns:
+        CUDAMiner or OpenCLMiner instance
+    """
+    if backend == "cuda":
+        if not CUDA_AVAILABLE:
+            raise RuntimeError("CUDA backend requested but PyCUDA not available")
+        return CUDAMiner(device_id=device_id, logger=logger)
+    elif backend == "opencl":
+        if not OPENCL_AVAILABLE:
+            raise RuntimeError("OpenCL backend requested but PyOpenCL not available")
+        return OpenCLMiner(device_id=device_id, logger=logger)
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
+

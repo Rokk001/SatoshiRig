@@ -22,6 +22,10 @@ dependencies = [
 gpu-monitoring = [
   "nvidia-ml-py>=12.0.0"
 ]
+gpu-mining = [
+  "pycuda>=2023.1",
+  "pyopencl>=2023.1.2"
+]
 
 [project.scripts]
 satoshirig = "SatoshiRig.cli:main"

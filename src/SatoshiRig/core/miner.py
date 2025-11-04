@@ -32,12 +32,30 @@ class Miner :
         self.state = state
         self.log = logger
         self.total_hash_count = 0  # Persistent total hash count across loops
+        self.gpu_miner = None
         
-        # Check compute backend configuration
+        # Initialize GPU miner if configured
         compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
-        if compute_backend != "cpu":
-            self.log.warning(f"GPU backend '{compute_backend}' is configured but not yet implemented. Using CPU backend.")
-            self.log.warning("GPU mining (CUDA/OpenCL) is planned but not yet available. See PROJECT_STATUS.md for details.")
+        gpu_device = self.cfg.get("compute" , {}).get("gpu_device" , 0)
+        
+        if compute_backend == "cuda":
+            try:
+                from .gpu_compute import create_gpu_miner
+                self.gpu_miner = create_gpu_miner("cuda", device_id=gpu_device, logger=self.log)
+                self.log.info(f"CUDA GPU miner initialized on device {gpu_device}")
+            except Exception as e:
+                self.log.error(f"Failed to initialize CUDA miner: {e}")
+                self.log.warning("Falling back to CPU mining")
+                self.gpu_miner = None
+        elif compute_backend == "opencl":
+            try:
+                from .gpu_compute import create_gpu_miner
+                self.gpu_miner = create_gpu_miner("opencl", device_id=gpu_device, logger=self.log)
+                self.log.info(f"OpenCL GPU miner initialized on device {gpu_device}")
+            except Exception as e:
+                self.log.error(f"Failed to initialize OpenCL miner: {e}")
+                self.log.warning("Falling back to CPU mining")
+                self.gpu_miner = None
 
     def _get_current_block_height(self) -> int :
         net = self.cfg["network"]
@@ -145,26 +163,39 @@ class Miner :
                     update_status("job_id" , self.state.job_id)
                 return self._mine_loop()
 
-            nonce_hex = hex(random.getrandbits(32))[2 :].zfill(8)
-            block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
-            # TODO: Implement GPU hashing (CUDA/OpenCL) when backend is not "cpu"
-            # Currently always uses CPU via hashlib
-            compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
-            if compute_backend == "cuda":
-                # Future: Use CUDA for SHA256 hashing
-                # hash_hex = self._hash_cuda(block_header)
-                hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
-            elif compute_backend == "opencl":
-                # Future: Use OpenCL for SHA256 hashing
-                # hash_hex = self._hash_opencl(block_header)
-                hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+            # Use GPU miner if available, otherwise use CPU
+            if self.gpu_miner:
+                # GPU mining: test multiple nonces in parallel
+                base_nonce = random.getrandbits(32)
+                block_header_base = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , "00000000")
+                block_header_hex = block_header_base
+                
+                # Try GPU batch hashing
+                result = self.gpu_miner.hash_block_header(block_header_hex, num_nonces=1024)
+                if result:
+                    hash_hex, best_nonce = result
+                    nonce_hex = f"{best_nonce:08x}"
+                    hash_count += 1024  # Approximate batch size
+                    self.total_hash_count += 1024
+                    update_status("total_hashes" , self.total_hash_count)
+                else:
+                    # Fallback to CPU if GPU fails
+                    nonce_hex = hex(base_nonce)[2 :].zfill(8)
+                    block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
+                    hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+                    hash_hex = binascii.hexlify(hash_hex).decode()
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes" , self.total_hash_count)
             else:
-                # CPU backend (current implementation)
+                # CPU mining (original implementation)
+                nonce_hex = hex(random.getrandbits(32))[2 :].zfill(8)
+                block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
                 hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
-            hash_hex = binascii.hexlify(hash_hex).decode()
-            hash_count += 1
-            self.total_hash_count += 1
-            update_status("total_hashes" , self.total_hash_count)
+                hash_hex = binascii.hexlify(hash_hex).decode()
+                hash_count += 1
+                self.total_hash_count += 1
+                update_status("total_hashes" , self.total_hash_count)
 
             if hash_hex.startswith(prefix_zeros) :
                 self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)

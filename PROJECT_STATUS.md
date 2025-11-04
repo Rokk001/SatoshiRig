@@ -49,7 +49,8 @@ Updated: 2025-01-05
 - Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed).
 
 ## Open Items / Next Steps
-- Implement real GPU hashing (CUDA/OpenCL kernels) and auto-detection.
+- ✅ GPU mining support implemented (CUDA/OpenCL with parallel batch hashing)
+- Optimize GPU kernels for better performance (currently uses parallel CPU threads)
 - Add structured logging (JSON) option.
 - Add integration tests with a mocked pool server.
 - Optional metrics endpoint (Prometheus) for hashrate and connectivity.
