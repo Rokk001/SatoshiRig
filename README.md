@@ -89,6 +89,8 @@ docker run --rm --runtime=nvidia \
 
 A pre-configured compose file is included (`docker-compose.yml`).
 
+**Important:** The compose file uses `build: .` to build from the local Dockerfile. If you see an error about pulling an image from `ghcr.io`, make sure you're using `build` mode in Unraid, not `image` mode.
+
 1) Set environment variables (Unraid UI or `.env` in project directory):
 
 ```
@@ -104,6 +106,11 @@ WEB_PORT=5000
 ```
 docker compose up -d
 ```
+
+**For Unraid:**
+- In the Unraid Docker Compose UI, make sure the container is set to use "Build" mode, not "Image" mode
+- If you see an error about `ghcr.io/rokk001/satoshirig:latest`, ensure you're building from the local Dockerfile
+- The compose file builds from the local `Dockerfile` in the project directory
 
 **NVIDIA GPU Setup:**
 

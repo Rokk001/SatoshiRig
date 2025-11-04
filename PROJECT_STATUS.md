@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2025-01-04
+Updated: 2025-01-05
 
 ## Overview
 - Repository name: `SatoshiRig`
@@ -36,7 +36,7 @@ Updated: 2025-01-04
 - CI hardening; package install in CI; auto-release workflow with correct permissions.
 - Web dashboard added: Flask + SocketIO for real-time mining status monitoring.
 - Configurable block source: web service or local Bitcoin Core RPC.
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`.
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation).
 
 ## Open Items / Next Steps
 - Implement real GPU hashing (CUDA/OpenCL kernels) and auto-detection.

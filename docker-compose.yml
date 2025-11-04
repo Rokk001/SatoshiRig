@@ -3,9 +3,13 @@ version: "3.8"
 services:
   satoshirig:
     container_name: satoshirig
-    build: .
-    # If you publish an image, replace the two lines above with:
-    # image: ghcr.io/yourorg/satoshirig:latest
+    # Build from local Dockerfile (default)
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # IMPORTANT: Do not use image: below if you want to build locally
+    # Only uncomment image: and comment out build: if you have published this image to a registry
+    # image: ghcr.io/rokk001/satoshirig:latest
     restart: unless-stopped
     environment:
       # REQUIRED: set your BTC wallet address
@@ -41,5 +45,3 @@ services:
     # devices:
     #   - /dev/dri:/dev/dri
     command: ["python", "-m", "SatoshiRig"]
-
-
