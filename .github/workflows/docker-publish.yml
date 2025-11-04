@@ -10,7 +10,6 @@ on:
 
 env:
     REGISTRY: ghcr.io
-    IMAGE_NAME: ${{ github.repository_owner }}/satoshirig
     PACKAGE_NAME: satoshirig
 
 jobs:
@@ -20,7 +19,6 @@ jobs:
             contents: read
             packages: write
             id-token: write
-            administration: write
 
         steps:
             - name: Checkout repository
@@ -36,11 +34,19 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
+            - name: Set image name (lowercase)
+              id: image
+              run: |
+                  OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+                  IMAGE_NAME="${OWNER_LOWER}/${{ env.PACKAGE_NAME }}"
+                  echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+                  echo "FULL_IMAGE=${{ env.REGISTRY }}/${IMAGE_NAME}" >> $GITHUB_ENV
+
             - name: Extract metadata (for tags)
               id: meta
               uses: docker/metadata-action@v5
               with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+                  images: ${{ env.FULL_IMAGE }}
                   tags: |
                       type=ref,event=tag
                       type=semver,pattern={{version}}
