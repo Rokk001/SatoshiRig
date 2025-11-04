@@ -82,7 +82,7 @@ class Miner :
 
         reference_diff = int("00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" , 16)
 
-        self.log.info('[*] Working to solve block with height %s' , current_height + 1)
+        self.log.info('Mining block height %s' , current_height + 1)
 
         prefix_zeros = '0' * self.cfg["miner"]["hash_log_prefix_zeros"]
 
@@ -91,8 +91,8 @@ class Miner :
                 break
 
             if self.state.prev_hash != self.state.updated_prev_hash :
-                self.log.info('[*] New block %s detected on network ' , self.state.prev_hash)
-                self.log.info('[*] Best difficulty while trying to solve block %s was %s' , current_height + 1 ,
+                self.log.info('New block detected: %s' , self.state.prev_hash)
+                self.log.info('Best difficulty for height %s was %s' , current_height + 1 ,
                               self.state.height_to_best_difficulty[current_height + 1])
                 self.state.updated_prev_hash = self.state.prev_hash
                 self.state.height_to_best_difficulty[-1] = -1
@@ -104,7 +104,7 @@ class Miner :
             hash_hex = binascii.hexlify(hash_hex).decode()
 
             if hash_hex.startswith(prefix_zeros) :
-                self.log.info('[*] New hash: %s for block %s' , hash_hex , current_height + 1)
+                self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)
             this_hash_int = int(hash_hex , 16)
 
             difficulty = reference_diff / this_hash_int
@@ -113,11 +113,11 @@ class Miner :
                 self.state.height_to_best_difficulty[current_height + 1] = difficulty
 
             if hash_hex < target :
-                self.log.info('[*] Block %s solved.' , current_height + 1)
-                self.log.info('[*] Block hash: %s' , hash_hex)
-                self.log.debug('[*] Blockheader: %s' , block_header)
+                self.log.info('Block solved at height %s' , current_height + 1)
+                self.log.info('Block hash %s' , hash_hex)
+                self.log.debug('Blockheader %s' , block_header)
                 ret = self.pool.submit(self.wallet , self.state.job_id , self.state.extranonce2 , self.state.ntime , nonce_hex)
-                self.log.info('[*] Pool response: %s' , ret)
+                self.log.info('Pool response %s' , ret)
                 return True
 
 
