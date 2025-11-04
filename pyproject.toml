@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "BtcSoloMinerGpu"
+version = "0.1.0"
+description = "Bitcoin solo miner with configurable backends and Docker support"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{ name = "", email = "" }]
+dependencies = [
+  "requests==2.32.3",
+  "colorama==0.4.6"
+]
+
+[project.scripts]
+btcsolo = "BtcSoloMinerGpu.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["BtcSoloMinerGpu*"]
+
+

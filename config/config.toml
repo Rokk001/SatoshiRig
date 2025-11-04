@@ -1,0 +1,22 @@
+[pool]
+host = "solo.ckpool.org"
+port = 3333
+
+[network]
+latest_block_url = "https://blockchain.info/latestblock"
+request_timeout_secs = 15
+
+[logging]
+file = "miner.log"
+level = "INFO"
+
+[miner]
+restart_delay_secs = 2
+subscribe_thread_start_delay_secs = 4
+hash_log_prefix_zeros = 7
+
+[compute]
+backend = "cpu"  # cpu | cuda | opencl
+gpu_device = 0
+
+
