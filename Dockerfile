@@ -22,6 +22,16 @@ ENV WALLET_ADDRESS=""
 ENV CONFIG_FILE="/app/config/config.toml"
 ENV COMPUTE_BACKEND="cpu"
 ENV GPU_DEVICE="0"
+ENV WEB_PORT="5000"
+
+# Docker Labels for WebUI Navigation (Docker Desktop / Portainer)
+LABEL org.opencontainers.image.title="SatoshiRig"
+LABEL org.opencontainers.image.description="Bitcoin Solo Mining Client WebUI"
+LABEL org.opencontainers.image.url="http://localhost:5000"
+LABEL io.portainer.container.http.port="5000"
+LABEL io.portainer.container.http.url="http://localhost:5000"
+LABEL io.portainer.accesscontrol.public="true"
+LABEL com.docker.compose.service.webui="http://localhost:5000"
 
 CMD ["python", "-m", "SatoshiRig"]
 

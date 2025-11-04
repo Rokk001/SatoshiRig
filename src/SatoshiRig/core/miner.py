@@ -86,6 +86,13 @@ class Miner :
             time.sleep(self.cfg["miner"]["restart_delay_secs"])
 
         target = (self.state.nbits[2 :] + '00' * (int(self.state.nbits[:2] , 16) - 3)).zfill(64)
+        # Calculate target difficulty from nbits
+        # Difficulty = 0x00000000FFFF0000000000000000000000000000000000000000000000000000 / target
+        target_int = int(target , 16)
+        if target_int > 0 :
+            reference_diff = int("00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" , 16)
+            target_difficulty = reference_diff / target_int
+            update_status("target_difficulty" , target_difficulty)
         extranonce2 = hex(random.getrandbits(32))[2 :].zfill(2 * self.state.extranonce2_size)
         self.state.extranonce2 = extranonce2
 

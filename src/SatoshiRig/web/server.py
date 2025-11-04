@@ -1,15 +1,31 @@
 import json
 import logging
+import os
+import platform
+import psutil
 import threading
 import time
 from collections import deque
-from datetime import datetime
-from typing import Dict, List
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
+
+# Try to import GPU monitoring libraries
+try:
+    import pynvml
+    PYNVML_AVAILABLE = True
+except ImportError:
+    PYNVML_AVAILABLE = False
+
+try:
+    import pyopencl
+    OPENCL_AVAILABLE = True
+except ImportError:
+    OPENCL_AVAILABLE = False
 
 
 STATUS_LOCK = threading.Lock()
@@ -36,6 +52,19 @@ STATUS: Dict = {
     "last_share_time": None,
     "hash_rate_history": deque(maxlen=60),  # Last 60 data points (2 minutes at 2s intervals)
     "difficulty_history": deque(maxlen=60),
+    # Performance & Monitoring (Feature 1)
+    "cpu_usage": 0.0,
+    "memory_usage": 0.0,
+    "gpu_usage": 0.0,
+    "gpu_temperature": 0.0,
+    "gpu_memory": 0.0,
+    # Mining Intelligence (Feature 2)
+    "estimated_time_to_block": None,
+    "block_found_probability": 0.0,
+    "estimated_profitability": 0.0,
+    "difficulty_trend": "stable",  # increasing, decreasing, stable
+    "network_difficulty": 0.0,
+    "target_difficulty": 0.0,
     "errors": []
 }
 
@@ -107,6 +136,150 @@ def update_pool_status(connected: bool, host: str = None, port: int = None):
             STATUS["pool_port"] = port
 
 
+# Performance & Monitoring Functions (Feature 1)
+def update_performance_metrics():
+    """Update CPU, memory, and GPU metrics"""
+    try:
+        # CPU Usage
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        STATUS["cpu_usage"] = cpu_percent
+        
+        # Memory Usage
+        memory = psutil.virtual_memory()
+        STATUS["memory_usage"] = memory.percent
+        
+        # GPU Monitoring (NVIDIA)
+        if PYNVML_AVAILABLE:
+            try:
+                if not hasattr(update_performance_metrics, 'nvml_initialized'):
+                    pynvml.nvmlInit()
+                    update_performance_metrics.nvml_initialized = True
+                
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                STATUS["gpu_usage"] = util.gpu
+                
+                temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+                STATUS["gpu_temperature"] = temp
+                
+                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                STATUS["gpu_memory"] = (mem_info.used / mem_info.total) * 100
+            except Exception as e:
+                logging.debug(f"GPU monitoring error: {e}")
+                STATUS["gpu_usage"] = 0.0
+                STATUS["gpu_temperature"] = 0.0
+                STATUS["gpu_memory"] = 0.0
+        else:
+            STATUS["gpu_usage"] = 0.0
+            STATUS["gpu_temperature"] = 0.0
+            STATUS["gpu_memory"] = 0.0
+    except Exception as e:
+        logging.debug(f"Performance metrics error: {e}")
+
+
+# Mining Intelligence Functions (Feature 2)
+def calculate_mining_intelligence():
+    """Calculate estimated time to block, probability, and profitability"""
+    with STATUS_LOCK:
+        hash_rate = STATUS.get("hash_rate", 0)
+        best_difficulty = STATUS.get("best_difficulty", 0)
+        target_difficulty = STATUS.get("target_difficulty", 0)
+        network_difficulty = STATUS.get("network_difficulty", 0)
+        
+        if not hash_rate or hash_rate <= 0:
+            STATUS["estimated_time_to_block"] = None
+            STATUS["block_found_probability"] = 0.0
+            STATUS["estimated_profitability"] = 0.0
+            return
+        
+        # Calculate target difficulty from nbits (simplified)
+        # For Bitcoin, difficulty = 65535 * 256^(exponent-3) / mantissa
+        if target_difficulty > 0:
+            difficulty = target_difficulty
+        elif network_difficulty > 0:
+            difficulty = network_difficulty
+        elif best_difficulty > 0:
+            # Use best difficulty as approximation
+            difficulty = best_difficulty * 2  # Conservative estimate
+        else:
+            # Default Bitcoin network difficulty (approximate)
+            difficulty = 50_000_000_000  # ~50 trillion
+        
+        # Estimated time to block (in seconds)
+        # Expected hashes = 2^32 * difficulty
+        expected_hashes = (2 ** 32) * difficulty
+        if hash_rate > 0:
+            estimated_seconds = expected_hashes / hash_rate
+            STATUS["estimated_time_to_block"] = estimated_seconds
+            
+            # Convert to human-readable format
+            if estimated_seconds < 60:
+                time_str = f"{estimated_seconds:.1f}s"
+            elif estimated_seconds < 3600:
+                time_str = f"{estimated_seconds/60:.1f}m"
+            elif estimated_seconds < 86400:
+                time_str = f"{estimated_seconds/3600:.1f}h"
+            else:
+                time_str = f"{estimated_seconds/86400:.1f}d"
+            STATUS["estimated_time_to_block_formatted"] = time_str
+            
+            # Block found probability (simplified - probability of finding block in next hour)
+            # P = 1 - e^(-hash_rate * 3600 / expected_hashes)
+            import math
+            if expected_hashes > 0:
+                prob = 1 - math.exp(-(hash_rate * 3600) / expected_hashes)
+                STATUS["block_found_probability"] = prob * 100
+            else:
+                STATUS["block_found_probability"] = 0.0
+            
+            # Estimated profitability (BTC per day) - very simplified
+            # Assumes block reward = 3.125 BTC (current halving)
+            block_reward = 3.125
+            blocks_per_day = (86400 / estimated_seconds) if estimated_seconds > 0 else 0
+            btc_per_day = blocks_per_day * block_reward
+            STATUS["estimated_profitability"] = btc_per_day
+            
+            # Difficulty trend analysis
+            if len(STATUS["difficulty_history"]) >= 2:
+                recent = list(STATUS["difficulty_history"])[-5:]
+                if len(recent) >= 2:
+                    avg_recent = sum(recent[-3:]) / len(recent[-3:])
+                    avg_older = sum(recent[:-3]) / len(recent[:-3]) if len(recent) > 3 else recent[0]
+                    if avg_recent > avg_older * 1.05:
+                        STATUS["difficulty_trend"] = "increasing"
+                    elif avg_recent < avg_older * 0.95:
+                        STATUS["difficulty_trend"] = "decreasing"
+                    else:
+                        STATUS["difficulty_trend"] = "stable"
+        else:
+            STATUS["estimated_time_to_block"] = None
+            STATUS["block_found_probability"] = 0.0
+            STATUS["estimated_profitability"] = 0.0
+
+
+# Background thread for performance monitoring
+def performance_monitor_thread():
+    """Background thread to continuously update performance metrics"""
+    while True:
+        try:
+            update_performance_metrics()
+            calculate_mining_intelligence()
+            time.sleep(2)  # Update every 2 seconds
+        except Exception as e:
+            logging.debug(f"Performance monitor error: {e}")
+            time.sleep(5)
+
+
+# Start performance monitoring thread
+_performance_thread = None
+def start_performance_monitoring():
+    """Start the performance monitoring background thread"""
+    global _performance_thread
+    if _performance_thread is None or not _performance_thread.is_alive():
+        _performance_thread = threading.Thread(target=performance_monitor_thread, daemon=True)
+        _performance_thread.start()
+
+
 app = Flask(__name__, static_url_path="/static")
 app.config["SECRET_KEY"] = "satoshirig-miner-status"
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -157,7 +330,9 @@ def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     update_status("running", True)
     with STATS_LOCK:
         STATS["start_time"] = datetime.now().isoformat()
+    # Start background threads
     threading.Thread(target=broadcast_status, daemon=True).start()
+    start_performance_monitoring()
     socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)
 
 
@@ -486,6 +661,76 @@ INDEX_HTML = """
             <canvas id="difficultyChart"></canvas>
         </div>
 
+        <!-- Performance & Monitoring Section (Feature 1) -->
+        <div class="chart-container">
+            <h2>Performance & Monitoring</h2>
+            <div class="status-grid">
+                <div class="status-card">
+                    <h2>CPU Usage</h2>
+                    <div class="status-value" id="cpuUsage">-</div>
+                    <div class="status-label">CPU Utilization</div>
+                </div>
+                <div class="status-card">
+                    <h2>Memory Usage</h2>
+                    <div class="status-value" id="memoryUsage">-</div>
+                    <div class="status-label">RAM Utilization</div>
+                </div>
+                <div class="status-card">
+                    <h2>GPU Usage</h2>
+                    <div class="status-value" id="gpuUsage">-</div>
+                    <div class="status-label">GPU Utilization</div>
+                </div>
+                <div class="status-card">
+                    <h2>GPU Temperature</h2>
+                    <div class="status-value" id="gpuTemperature">-</div>
+                    <div class="status-label">GPU Temp (°C)</div>
+                </div>
+                <div class="status-card">
+                    <h2>GPU Memory</h2>
+                    <div class="status-value" id="gpuMemory">-</div>
+                    <div class="status-label">GPU Memory Usage</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mining Intelligence Section (Feature 2) -->
+        <div class="chart-container">
+            <h2>Mining Intelligence</h2>
+            <div class="status-grid">
+                <div class="status-card">
+                    <h2>Estimated Time to Block</h2>
+                    <div class="status-value" id="estimatedTimeToBlock" style="font-size: 1.8em;">-</div>
+                    <div class="status-label">Expected Time</div>
+                </div>
+                <div class="status-card">
+                    <h2>Block Found Probability</h2>
+                    <div class="status-value" id="blockFoundProbability">-</div>
+                    <div class="status-label">Probability (Next Hour)</div>
+                </div>
+                <div class="status-card">
+                    <h2>Estimated Profitability</h2>
+                    <div class="status-value" id="estimatedProfitability">-</div>
+                    <div class="status-label">BTC per Day</div>
+                </div>
+                <div class="status-card">
+                    <h2>Difficulty Trend</h2>
+                    <div class="status-value" id="difficultyTrend" style="font-size: 1.5em;">-</div>
+                    <div class="status-label">Network Trend</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Visualizations Section (Feature 3) -->
+        <div class="chart-container">
+            <h2>Hash Rate vs Difficulty Comparison</h2>
+            <canvas id="comparisonChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h2>Performance Metrics Dashboard</h2>
+            <canvas id="performanceChart"></canvas>
+        </div>
+
         <div class="status-card">
             <h2>Share History</h2>
             <div class="share-history" id="shareHistory">
@@ -591,6 +836,110 @@ INDEX_HTML = """
             }
         });
 
+        // Comparison Chart (Hash Rate vs Difficulty) - Feature 3
+        const comparisonChart = new Chart(document.getElementById('comparisonChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Hash Rate (H/s)',
+                    data: [],
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                }, {
+                    label: 'Difficulty',
+                    data: [],
+                    borderColor: '#a8d5ff',
+                    backgroundColor: 'rgba(168, 213, 255, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { color: '#fff' } }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { color: '#4ade80' },
+                        grid: { color: 'rgba(74, 222, 128, 0.1)' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: true,
+                        ticks: { color: '#a8d5ff' },
+                        grid: { drawOnChartArea: false }
+                    },
+                    x: { ticks: { color: '#ccc' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                }
+            }
+        });
+
+        // Performance Metrics Chart - Feature 3
+        const performanceChart = new Chart(document.getElementById('performanceChart'), {
+            type: 'bar',
+            data: {
+                labels: ['CPU', 'Memory', 'GPU', 'GPU Temp'],
+                datasets: [{
+                    label: 'Usage (%)',
+                    data: [0, 0, 0, 0],
+                    backgroundColor: [
+                        'rgba(74, 222, 128, 0.6)',
+                        'rgba(168, 213, 255, 0.6)',
+                        'rgba(251, 191, 36, 0.6)',
+                        'rgba(239, 68, 68, 0.6)'
+                    ],
+                    borderColor: [
+                        '#4ade80',
+                        '#a8d5ff',
+                        '#fbbf24',
+                        '#ef4444'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.dataIndex === 3) {
+                                    return 'GPU Temp: ' + context.parsed.y + '°C';
+                                }
+                                return 'Usage: ' + context.parsed.y.toFixed(1) + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { color: '#ccc', callback: function(value) {
+                            if (this.dataIndex === 3) return value + '°C';
+                            return value + '%';
+                        }},
+                        grid: { color: 'rgba(255,255,255,0.1)' }
+                    },
+                    x: { ticks: { color: '#ccc' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                }
+            }
+        });
+
         function updateCharts(data) {
             if (data.hash_rate_history && data.hash_rate_history.length > 0) {
                 const labels = data.hash_rate_history.map((_, i) => i * 2 + 's');
@@ -603,6 +952,27 @@ INDEX_HTML = """
                 difficultyChart.data.labels = labels.slice(-60);
                 difficultyChart.data.datasets[0].data = data.difficulty_history.slice(-60);
                 difficultyChart.update('none');
+            }
+            // Update comparison chart (Hash Rate vs Difficulty) - Feature 3
+            if (data.hash_rate_history && data.difficulty_history && 
+                data.hash_rate_history.length > 0 && data.difficulty_history.length > 0) {
+                const minLen = Math.min(data.hash_rate_history.length, data.difficulty_history.length);
+                const labels = data.hash_rate_history.slice(-minLen).map((_, i) => i * 2 + 's');
+                comparisonChart.data.labels = labels;
+                comparisonChart.data.datasets[0].data = data.hash_rate_history.slice(-minLen);
+                comparisonChart.data.datasets[1].data = data.difficulty_history.slice(-minLen);
+                comparisonChart.update('none');
+            }
+            // Update performance chart - Feature 1
+            if (data.cpu_usage !== undefined || data.memory_usage !== undefined || 
+                data.gpu_usage !== undefined || data.gpu_temperature !== undefined) {
+                performanceChart.data.datasets[0].data = [
+                    data.cpu_usage || 0,
+                    data.memory_usage || 0,
+                    data.gpu_usage || 0,
+                    data.gpu_temperature || 0
+                ];
+                performanceChart.update('none');
             }
         }
 
@@ -735,6 +1105,68 @@ INDEX_HTML = """
                 } else {
                     document.getElementById('walletLink').style.display = 'none';
                 }
+            }
+            
+            // Performance & Monitoring (Feature 1)
+            if (data.cpu_usage !== undefined) {
+                document.getElementById('cpuUsage').textContent = data.cpu_usage.toFixed(1) + '%';
+            }
+            if (data.memory_usage !== undefined) {
+                document.getElementById('memoryUsage').textContent = data.memory_usage.toFixed(1) + '%';
+            }
+            if (data.gpu_usage !== undefined && data.gpu_usage > 0) {
+                document.getElementById('gpuUsage').textContent = data.gpu_usage.toFixed(1) + '%';
+            } else {
+                document.getElementById('gpuUsage').textContent = 'N/A';
+            }
+            if (data.gpu_temperature !== undefined && data.gpu_temperature > 0) {
+                document.getElementById('gpuTemperature').textContent = data.gpu_temperature.toFixed(0) + '°C';
+            } else {
+                document.getElementById('gpuTemperature').textContent = 'N/A';
+            }
+            if (data.gpu_memory !== undefined && data.gpu_memory > 0) {
+                document.getElementById('gpuMemory').textContent = data.gpu_memory.toFixed(1) + '%';
+            } else {
+                document.getElementById('gpuMemory').textContent = 'N/A';
+            }
+            
+            // Mining Intelligence (Feature 2)
+            if (data.estimated_time_to_block_formatted) {
+                document.getElementById('estimatedTimeToBlock').textContent = data.estimated_time_to_block_formatted;
+            } else if (data.estimated_time_to_block) {
+                const seconds = data.estimated_time_to_block;
+                if (seconds < 60) {
+                    document.getElementById('estimatedTimeToBlock').textContent = seconds.toFixed(1) + 's';
+                } else if (seconds < 3600) {
+                    document.getElementById('estimatedTimeToBlock').textContent = (seconds / 60).toFixed(1) + 'm';
+                } else if (seconds < 86400) {
+                    document.getElementById('estimatedTimeToBlock').textContent = (seconds / 3600).toFixed(1) + 'h';
+                } else {
+                    document.getElementById('estimatedTimeToBlock').textContent = (seconds / 86400).toFixed(1) + 'd';
+                }
+            } else {
+                document.getElementById('estimatedTimeToBlock').textContent = 'N/A';
+            }
+            
+            if (data.block_found_probability !== undefined) {
+                document.getElementById('blockFoundProbability').textContent = data.block_found_probability.toFixed(4) + '%';
+            } else {
+                document.getElementById('blockFoundProbability').textContent = '0.00%';
+            }
+            
+            if (data.estimated_profitability !== undefined && data.estimated_profitability > 0) {
+                document.getElementById('estimatedProfitability').textContent = data.estimated_profitability.toFixed(8) + ' BTC';
+            } else {
+                document.getElementById('estimatedProfitability').textContent = '0.00000000 BTC';
+            }
+            
+            if (data.difficulty_trend) {
+                const trend = data.difficulty_trend;
+                const trendEmoji = trend === 'increasing' ? '📈' : trend === 'decreasing' ? '📉' : '➡️';
+                const trendText = trend === 'increasing' ? 'Increasing' : trend === 'decreasing' ? 'Decreasing' : 'Stable';
+                document.getElementById('difficultyTrend').textContent = trendEmoji + ' ' + trendText;
+            } else {
+                document.getElementById('difficultyTrend').textContent = '➡️ Stable';
             }
             
             // Update charts
