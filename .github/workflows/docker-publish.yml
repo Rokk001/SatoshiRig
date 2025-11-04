@@ -5,16 +5,10 @@ on:
         tags:
             - "v*"
     workflow_dispatch:
-        # Only run on tags or manual dispatch - NO branch pushes!
-        inputs:
-            tag:
-                description: "Tag to publish (e.g., v2.0.2)"
-                required: false
 
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
-    # Package name must match repository name in lowercase
     PACKAGE_NAME: satoshirig
 
 jobs:
@@ -23,9 +17,7 @@ jobs:
         permissions:
             contents: read
             packages: write
-            # Need admin permissions to change package visibility
             id-token: write
-            # Repository admin permissions might be needed for package visibility
             administration: write
 
         steps:
@@ -41,17 +33,6 @@ jobs:
                   registry: ${{ env.REGISTRY }}
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Determine tag
-              id: vars
-              run: |
-                  if [ -n "${{ github.event.inputs.tag }}" ]; then
-                    echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-                  else
-                    echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-                  fi
-                  echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-                  echo "image_latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
 
             - name: Extract metadata (for tags)
               id: meta
@@ -94,10 +75,10 @@ jobs:
 
                   # Wait for package to be fully created after push
                   echo "⏳ Waiting for package to be available..."
-                  sleep 15
+                  sleep 20
 
                   # Try multiple methods with retries
-                  MAX_RETRIES=10
+                  MAX_RETRIES=15
                   RETRY_COUNT=0
                   SUCCESS=false
 
@@ -118,19 +99,7 @@ jobs:
                       echo "❌ User endpoint failed: ${RESULT}"
                     fi
 
-                    # Method 2: Org endpoint (original case)
-                    echo "Trying org endpoint (${OWNER})..."
-                    RESULT=$(gh api -X PATCH /orgs/${OWNER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
-                    if [ $? -eq 0 ]; then
-                      echo "✅ SUCCESS: Package set to public via org endpoint!"
-                      echo "${RESULT}"
-                      SUCCESS=true
-                      break
-                    else
-                      echo "❌ Org endpoint (${OWNER}) failed: ${RESULT}"
-                    fi
-
-                    # Method 3: Org endpoint (lowercase)
+                    # Method 2: Org endpoint (lowercase)
                     echo "Trying org endpoint (${OWNER_LOWER})..."
                     RESULT=$(gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
                     if [ $? -eq 0 ]; then
@@ -194,7 +163,6 @@ jobs:
                     echo "⚠️  WARNING: Could not set package to public automatically."
                     echo "The package was created but may still be private."
                     echo "Please check: https://github.com/${OWNER}?tab=packages"
-                    # Don't exit with error - package was created
                   fi
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
