@@ -67,6 +67,33 @@ docker run --rm --gpus all \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   btcsominer-gpu
+
+### Docker Compose (Unraid geeignet)
+
+Eine vorgefertigte Compose-Datei ist enthalten (`docker-compose.yml`).
+
+1) Umgebungsvariablen setzen (Unraid UI oder `.env` im Projektverzeichnis):
+
+```
+WALLET_ADDRESS=YOUR_BTC_ADDRESS
+COMPUTE_BACKEND=cpu
+GPU_DEVICE=0
+NVIDIA_VISIBLE_DEVICES=all
+```
+
+2) Starten:
+
+```
+docker compose up -d
+```
+
+Hinweise:
+- Für NVIDIA-GPU in Unraid den Nvidia-Driver installieren und in der Compose optional `runtime: nvidia` aktivieren.
+- Für iGPU/AMD kann ggf. `/dev/dri` durchreichen (siehe auskommentierter `devices`-Block in `docker-compose.yml`).
+
+### Releases
+
+Stabile Versionen werden als Tags veröffentlicht. Siehe Releases/Tags auf GitHub. Die CI erstellt Releases automatisch beim Taggen.
 ```
 
 ### Konfiguration
