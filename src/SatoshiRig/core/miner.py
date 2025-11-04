@@ -33,6 +33,7 @@ class Miner :
         self.log = logger
         self.total_hash_count = 0  # Persistent total hash count across loops
         self.gpu_miner = None
+        self.gpu_nonce_counter = 0  # Counter for sequential nonce generation in GPU mode
         
         # Initialize GPU miner if configured
         compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
@@ -165,27 +166,46 @@ class Miner :
 
             # Use GPU miner if available, otherwise use CPU
             if self.gpu_miner:
-                # GPU mining: test multiple nonces in parallel
-                base_nonce = random.getrandbits(32)
+                # GPU mining: test multiple nonces in parallel batch
                 block_header_base = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , "00000000")
                 block_header_hex = block_header_base
                 
-                # Try GPU batch hashing
-                result = self.gpu_miner.hash_block_header(block_header_hex, num_nonces=1024)
-                if result:
-                    hash_hex, best_nonce = result
-                    nonce_hex = f"{best_nonce:08x}"
-                    hash_count += 1024  # Approximate batch size
-                    self.total_hash_count += 1024
-                    update_status("total_hashes" , self.total_hash_count)
-                else:
-                    # Fallback to CPU if GPU fails
-                    nonce_hex = hex(base_nonce)[2 :].zfill(8)
+                # Use sequential nonce counter for better coverage (cycles through 2^32)
+                num_nonces_per_batch = 1024
+                
+                # Try GPU batch hashing (use sequential nonce counter for better coverage)
+                try:
+                    result = self.gpu_miner.hash_block_header(block_header_hex, num_nonces=num_nonces_per_batch, start_nonce=self.gpu_nonce_counter)
+                    if result:
+                        hash_hex, best_nonce = result
+                        nonce_hex = f"{best_nonce:08x}"
+                        # Update hash count based on actual batch size
+                        hash_count += num_nonces_per_batch
+                        self.total_hash_count += num_nonces_per_batch
+                        update_status("total_hashes" , self.total_hash_count)
+                        # Increment nonce counter for next batch
+                        self.gpu_nonce_counter = (best_nonce + 1) % (2**32)
+                    else:
+                        # GPU returned None - fallback to CPU for this iteration
+                        self.log.warning("GPU miner returned None, falling back to CPU")
+                        nonce_hex = hex(self.gpu_nonce_counter)[2 :].zfill(8)
+                        block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
+                        hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+                        hash_hex = binascii.hexlify(hash_hex).decode()
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
+                        update_status("total_hashes" , self.total_hash_count)
+                except Exception as e:
+                    # GPU error - fallback to CPU
+                    self.log.error(f"GPU mining error: {e}, falling back to CPU")
+                    nonce_hex = hex(self.gpu_nonce_counter)[2 :].zfill(8)
                     block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
                     hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
                     hash_hex = binascii.hexlify(hash_hex).decode()
                     hash_count += 1
                     self.total_hash_count += 1
+                    self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
                     update_status("total_hashes" , self.total_hash_count)
             else:
                 # CPU mining (original implementation)

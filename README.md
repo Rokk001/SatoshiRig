@@ -408,7 +408,7 @@ Switching network source:
 
 ### Notes
 
-- **GPU Mining**: GPU mining support is implemented with CUDA/OpenCL backends. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) for improved performance. For optimal performance, GPU kernels can be further optimized.
+- **GPU Mining**: GPU mining support is implemented with CUDA/OpenCL backends. The Docker image uses NVIDIA CUDA base image (`nvidia/cuda:11.8.0-runtime-ubuntu22.04`) for proper GPU support. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) with sequential nonce counter for complete coverage. Enhanced GPU initialization with better error handling and device validation. For optimal performance, GPU kernels can be further optimized.
 - **Web Dashboard Formatting**: 
   - Hash values (Hash Rate, Peak Hash Rate, Average Hash Rate, Total Hashes) are automatically formatted with magnitude units (K, M, G, T, P, E) for better readability.
   - Estimated time to block is displayed in years, months, and days for easier comprehension of very large time periods.

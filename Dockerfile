@@ -1,16 +1,25 @@
-# For GPU support with NVIDIA, you can switch to an NVIDIA CUDA base image.
-# Default remains slim Python for portability; to use GPU, run container with --gpus or --runtime=nvidia.
+# For GPU support with NVIDIA, we use an NVIDIA CUDA base image.
+# This allows PyCUDA to be installed with CUDA support.
 # Note: Using --runtime=nvidia requires NVIDIA Container Toolkit to be installed on the host.
 # SatoshiRig - Bitcoin solo mining client
-FROM python:3.11-slim
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 
-# Install system dependencies for GPU support
+# Install Python and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
     gcc \
     g++ \
     make \
     libc6-dev \
+    ocl-icd-opencl-dev \
+    opencl-headers \
     && rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python and pip
+RUN ln -s /usr/bin/python3.11 /usr/bin/python && \
+    ln -s /usr/bin/python3.11 /usr/bin/python3
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
@@ -19,6 +28,10 @@ WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install GPU dependencies (PyCUDA and PyOpenCL)
+# These will be available when running with --runtime=nvidia or --gpus
+RUN pip install --no-cache-dir pycuda>=2023.1 pyopencl>=2023.1.2
 
 COPY src ./src
 COPY config ./config

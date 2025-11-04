@@ -8,16 +8,16 @@ Updated: 2025-01-05
 
 ## Architecture
 - Package: `src/SatoshiRig`
-  - `core/miner.py`: `Miner` class (mining loop, logging, GPU support).
+  - `core/miner.py`: `Miner` class (mining loop, logging, GPU support with sequential nonce counter).
   - `core/state.py`: `MinerState` dataclass (runtime state).
-  - `core/gpu_compute.py`: GPU compute module (CUDA/OpenCL support for GPU mining).
+  - `core/gpu_compute.py`: GPU compute module (CUDA/OpenCL support for GPU mining with improved initialization and error handling).
   - `clients/pool_client.py`: CKPool TCP JSON client (subscribe/authorize/notify/submit).
   - `cli.py`: argparse CLI; loads config, sets up logging, builds dependencies, starts `Miner`.
   - `config.py`: loads TOML config (`CONFIG_FILE` override supported).
   - `miner.py`: thin compatibility facade.
   - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard with tabs (Overview, Performance, Analytics, Intelligence, History).
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
-- Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
+- Containerization: `Dockerfile` (NVIDIA CUDA base image `nvidia/cuda:11.8.0-runtime-ubuntu22.04`), `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
 - CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags), `.github/workflows/docker-publish.yml` (builds and publishes Docker image to GHCR).
 - Packaging: `pyproject.toml` with console script `satoshirig`.
 
@@ -48,9 +48,10 @@ Updated: 2025-01-05
 - Mining Control: Pause button now stops mining via API endpoints (`/api/stop`, `/api/start`).
 - UI Improvements: Removed redundant "Connected" button, improved visual hierarchy with section headers.
 - GPU Mining Support: Implemented CUDA/OpenCL support with parallel batch hashing (1024 nonces per iteration), automatic GPU initialization, fallback to CPU if GPU unavailable.
+- GPU Mining Improvements (v2.5.0): Dockerfile now uses NVIDIA CUDA base image for proper GPU support, improved GPU initialization with better error handling, sequential nonce counter for complete coverage, removed pycuda.autoinit for flexible initialization, enhanced GPU device detection and validation.
 - Time Formatting: "Estimated Time to Block" now displays in years, months, and days (e.g., "145883385836 Jahre, 0 Monate, 26.5 Tage" instead of "53247435828136.5d").
 - Hash Value Formatting: Hash values now display with magnitude units (K, M, G, T, P, E) for better readability (e.g., "145.79 KH/s" instead of "145788.53 H/s", "82.33 MH" instead of "82332425 H").
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units).
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units), `v2.5.0` (GPU mining improvements with NVIDIA CUDA base image, enhanced GPU initialization, sequential nonce counter).
 
 ## Open Items / Next Steps
 - ✅ GPU mining support implemented (CUDA/OpenCL with parallel batch hashing)

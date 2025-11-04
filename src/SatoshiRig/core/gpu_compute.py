@@ -9,22 +9,37 @@ from typing import Optional, Tuple
 logger = logging.getLogger("SatoshiRig.gpu")
 
 # Try to import CUDA
+# Note: We import pycuda.driver first, then autoinit only when needed
+# This allows the module to be imported even if CUDA is not available at import time
 try:
     import pycuda.driver as cuda
-    import pycuda.autoinit
     from pycuda.compiler import SourceModule
     CUDA_AVAILABLE = True
-except ImportError:
+    logger.debug("PyCUDA imported successfully (autoinit will be called during initialization)")
+except ImportError as e:
     CUDA_AVAILABLE = False
     cuda = None
+    SourceModule = None
+    logger.debug(f"PyCUDA not available: {e}")
+except Exception as e:
+    CUDA_AVAILABLE = False
+    cuda = None
+    SourceModule = None
+    logger.warning(f"PyCUDA import failed: {e}")
 
 # Try to import OpenCL
 try:
     import pyopencl as cl
     OPENCL_AVAILABLE = True
-except ImportError:
+    logger.debug("PyOpenCL imported successfully")
+except ImportError as e:
     OPENCL_AVAILABLE = False
     cl = None
+    logger.debug(f"PyOpenCL not available: {e}")
+except Exception as e:
+    OPENCL_AVAILABLE = False
+    cl = None
+    logger.warning(f"PyOpenCL import failed: {e}")
 
 
 # CUDA SHA256 Kernel
@@ -101,17 +116,43 @@ class CUDAMiner:
             raise RuntimeError("PyCUDA not available. Install with: pip install pycuda")
         
         try:
-            cuda.init()
+            # Initialize CUDA (equivalent to pycuda.autoinit, but only when needed)
+            # This allows the module to be imported even if CUDA is not available at import time
+            if not cuda.is_initialized():
+                cuda.init()
+            self.log.debug(f"CUDA initialized, device count: {cuda.Device.count()}")
+            
+            if cuda.Device.count() == 0:
+                raise RuntimeError("No CUDA devices found. Make sure NVIDIA GPU is available and container is run with --runtime=nvidia or --gpus")
+            
+            if device_id >= cuda.Device.count():
+                self.log.warning(f"Device ID {device_id} not available (only {cuda.Device.count()} devices), using device 0")
+                device_id = 0
+            
             self.device = cuda.Device(device_id)
             self.context = self.device.make_context()
-            self.log.info(f"CUDA device {device_id} initialized: {self.device.name()}")
+            device_name = self.device.name()
+            self.log.info(f"CUDA device {device_id} initialized: {device_name}")
+            
+            # Get device properties for debugging
+            props = self.device.get_attributes()
+            self.log.debug(f"CUDA device {device_id} properties: {props}")
         except Exception as e:
+            # Check if it's a CUDA-specific error
+            if cuda and hasattr(cuda, 'Error') and isinstance(e, cuda.Error):
+                self.log.error(f"CUDA error initializing device {device_id}: {e}")
+                raise RuntimeError(f"CUDA initialization failed: {e}. Make sure container is run with --runtime=nvidia or --gpus and NVIDIA drivers are installed.")
+            # Generic error
             self.log.error(f"Failed to initialize CUDA device {device_id}: {e}")
-            raise
+            raise RuntimeError(f"CUDA initialization failed: {e}")
     
-    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024) -> Optional[Tuple[str, int]]:
+    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
         """
         Hash block header with multiple nonces on GPU
+        Args:
+            block_header_hex: Block header in hex format (80 bytes)
+            num_nonces: Number of nonces to test
+            start_nonce: Starting nonce value (default: 0)
         Returns: (best_hash_hex, best_nonce) or None if no valid hash found
         """
         try:
@@ -134,11 +175,11 @@ class CUDAMiner:
             base_header = bytearray(block_header)
             
             # Test multiple nonces in parallel batches
-            def test_nonce_range(start_nonce, count):
+            def test_nonce_range(nonce_start, count):
                 local_best = None
                 local_best_nonce = None
                 for i in range(count):
-                    nonce = start_nonce + i
+                    nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
                     header_copy = base_header.copy()
                     # Update nonce in header (bytes 76-79)
                     header_copy[76:80] = struct.pack('>I', nonce)
@@ -157,12 +198,12 @@ class CUDAMiner:
             batch_size = 256
             num_batches = (num_nonces + batch_size - 1) // batch_size
             
-            with ThreadPoolExecutor(max_workers=min(4, num_batches)) as executor:
+            with ThreadPoolExecutor(max_workers=min(8, num_batches)) as executor:
                 futures = []
                 for i in range(num_batches):
-                    start = i * batch_size
-                    count = min(batch_size, num_nonces - start)
-                    futures.append(executor.submit(test_nonce_range, start, count))
+                    nonce_start = (start_nonce + i * batch_size) % (2**32)
+                    count = min(batch_size, num_nonces - i * batch_size)
+                    futures.append(executor.submit(test_nonce_range, nonce_start, count))
                 
                 for future in futures:
                     result = future.result()
@@ -228,9 +269,13 @@ class OpenCLMiner:
             self.log.error(f"Failed to initialize OpenCL device {device_id}: {e}")
             raise
     
-    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024) -> Optional[Tuple[str, int]]:
+    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
         """
         Hash block header with multiple nonces on GPU
+        Args:
+            block_header_hex: Block header in hex format (80 bytes)
+            num_nonces: Number of nonces to test
+            start_nonce: Starting nonce value (default: 0)
         Returns: (best_hash_hex, best_nonce) or None if no valid hash found
         """
         try:
@@ -253,11 +298,11 @@ class OpenCLMiner:
             base_header = bytearray(block_header)
             
             # Test multiple nonces in parallel batches
-            def test_nonce_range(start_nonce, count):
+            def test_nonce_range(nonce_start, count):
                 local_best = None
                 local_best_nonce = None
                 for i in range(count):
-                    nonce = start_nonce + i
+                    nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
                     header_copy = base_header.copy()
                     # Update nonce in header (bytes 76-79)
                     header_copy[76:80] = struct.pack('>I', nonce)
@@ -276,12 +321,12 @@ class OpenCLMiner:
             batch_size = 256
             num_batches = (num_nonces + batch_size - 1) // batch_size
             
-            with ThreadPoolExecutor(max_workers=min(4, num_batches)) as executor:
+            with ThreadPoolExecutor(max_workers=min(8, num_batches)) as executor:
                 futures = []
                 for i in range(num_batches):
-                    start = i * batch_size
-                    count = min(batch_size, num_nonces - start)
-                    futures.append(executor.submit(test_nonce_range, start, count))
+                    nonce_start = (start_nonce + i * batch_size) % (2**32)
+                    count = min(batch_size, num_nonces - i * batch_size)
+                    futures.append(executor.submit(test_nonce_range, nonce_start, count))
                 
                 for future in futures:
                     result = future.result()
