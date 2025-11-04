@@ -63,6 +63,7 @@ docker run --rm \
 
 Run (NVIDIA GPU):
 
+**Method 1: Using --gpus flag (recommended for Docker 19.03+):**
 ```
 docker run --rm --gpus all \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
@@ -70,6 +71,19 @@ docker run --rm --gpus all \
   -e GPU_DEVICE=0 \
   satoshirig
 ```
+
+**Method 2: Using --runtime=nvidia (for older Docker versions or when --gpus is not available):**
+```
+docker run --rm --runtime=nvidia \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  satoshirig
+```
+
+**Note:** The `--runtime=nvidia` parameter is required for Docker containers that need NVIDIA GPU access. Ensure you have the NVIDIA Container Toolkit installed on your system.
 
 ### Docker Compose (Unraid compatible)
 
@@ -91,9 +105,26 @@ WEB_PORT=5000
 docker compose up -d
 ```
 
-Notes:
-- For NVIDIA GPU in Unraid, install the Nvidia Driver plugin and optionally enable `runtime: nvidia` in compose.
-- For iGPU/AMD, you may need to pass through `/dev/dri` (see commented `devices` block in `docker-compose.yml`).
+**NVIDIA GPU Setup:**
+
+For NVIDIA GPU support in Docker Compose, you have two options:
+
+1. **Enable `runtime: nvidia` in docker-compose.yml** (uncomment the line):
+   ```yaml
+   runtime: nvidia
+   ```
+   This requires the NVIDIA Container Toolkit to be installed on your system.
+
+2. **Use `deploy.resources.reservations.devices`** (for Docker Compose v3.8+):
+   Uncomment the `deploy` section in `docker-compose.yml` instead of `runtime: nvidia`.
+
+**For Unraid:**
+- Install the "Nvidia Driver" plugin from Community Applications
+- Enable `runtime: nvidia` in the compose file (uncomment the line)
+- Set `COMPUTE_BACKEND=cuda` in your environment variables
+
+**For AMD/iGPU:**
+- You may need to pass through `/dev/dri` (see commented `devices` block in `docker-compose.yml`)
 
 ### Web Dashboard
 

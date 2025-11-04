@@ -16,13 +16,14 @@ Updated: 2025-01-04
   - `miner.py`: thin compatibility facade.
   - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard.
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
-- Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready).
+- Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
 - CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags).
 - Packaging: `pyproject.toml` with console script `satoshirig`.
 
 ## Usage
 - Local: `python -m SatoshiRig --wallet <ADDR> [--config ./config/config.toml] [--backend cpu|cuda|opencl] [--gpu 0] [--web-port 5000]`
 - Docker: `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 satoshirig`
+- Docker (NVIDIA GPU): `docker run --rm --gpus all -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda satoshirig` or `docker run --rm --runtime=nvidia -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda satoshirig`
 - Compose/Unraid: `docker compose up -d` with env vars in Unraid UI or `.env`.
 - Web Dashboard: Access via `http://localhost:5000` (or configured port) when running.
 
