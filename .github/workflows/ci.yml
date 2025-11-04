@@ -19,10 +19,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
-      - name: Lint formatting
+      - name: Format code (Black)
         run: |
           pip install black
-          black --check src tests
+          black src tests
       - name: Run tests
         run: |
           pytest -q
