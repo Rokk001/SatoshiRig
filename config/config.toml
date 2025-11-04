@@ -23,5 +23,3 @@ hash_log_prefix_zeros = 7
 [compute]
 backend = "cpu"  # cpu | cuda | opencl
 gpu_device = 0
-
-

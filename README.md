@@ -2,7 +2,7 @@
 
 Minimal, neutral Bitcoin Solo-Mining Client with clean architecture, config via TOML, and Docker support.
 
-### Projektstruktur
+### Project Structure
 
 ```
 src/
@@ -10,15 +10,17 @@ src/
     __init__.py
     __main__.py
     cli.py                 # argparse CLI, Dependency Injection
-    config.py              # TOML-Loader (CONFIG_FILE override möglich)
-    miner.py               # Abwärtskompatible Fassade (import convenience)
+    config.py              # TOML-Loader (CONFIG_FILE override supported)
+    miner.py               # Backward-compatible facade (import convenience)
     clients/
       pool_client.py       # CKPool TCP JSON client
     core/
-      miner.py             # Miner-Klasse (Kernlogik)
-      state.py             # MinerState-Datenklasse
+      miner.py             # Miner class (core logic)
+      state.py             # MinerState dataclass
+    web/
+      server.py            # Flask web server with SocketIO for live dashboard
 config/
-  config.toml              # Standard-Konfiguration
+  config.toml              # Default configuration
 ```
 
 ### Installation
@@ -27,16 +29,16 @@ config/
 pip install -r requirements.txt
 ```
 
-### Ausführen (lokal)
+### Run Locally
 
 ```
 python -m BtcSoloMinerGpu --wallet YOUR_BTC_ADDRESS --config ./config/config.toml --backend cpu --gpu 0
 ```
 
-Alternativ über Umgebungsvariablen:
+Alternatively via environment variables:
 
 ```
-set WALLET_ADDRESS=YOUR_BTC_ADDRESS
+set WALLET_ADDRESS=YOUR_BTC_ADDRESS  # Windows
 set CONFIG_FILE=./config/config.toml
 set COMPUTE_BACKEND=cpu
 set GPU_DEVICE=0
@@ -67,38 +69,45 @@ docker run --rm --gpus all \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   btcsominer-gpu
+```
 
-### Docker Compose (Unraid geeignet)
+### Docker Compose (Unraid compatible)
 
-Eine vorgefertigte Compose-Datei ist enthalten (`docker-compose.yml`).
+A pre-configured compose file is included (`docker-compose.yml`).
 
-1) Umgebungsvariablen setzen (Unraid UI oder `.env` im Projektverzeichnis):
+1) Set environment variables (Unraid UI or `.env` in project directory):
 
 ```
 WALLET_ADDRESS=YOUR_BTC_ADDRESS
 COMPUTE_BACKEND=cpu
 GPU_DEVICE=0
 NVIDIA_VISIBLE_DEVICES=all
+WEB_PORT=5000
 ```
 
-2) Starten:
+2) Start:
 
 ```
 docker compose up -d
 ```
 
-Hinweise:
-- Für NVIDIA-GPU in Unraid den Nvidia-Driver installieren und in der Compose optional `runtime: nvidia` aktivieren.
-- Für iGPU/AMD kann ggf. `/dev/dri` durchreichen (siehe auskommentierter `devices`-Block in `docker-compose.yml`).
+Notes:
+- For NVIDIA GPU in Unraid, install the Nvidia Driver plugin and optionally enable `runtime: nvidia` in compose.
+- For iGPU/AMD, you may need to pass through `/dev/dri` (see commented `devices` block in `docker-compose.yml`).
 
-### Releases
+### Web Dashboard
 
-Stabile Versionen werden als Tags veröffentlicht. Siehe Releases/Tags auf GitHub. Die CI erstellt Releases automatisch beim Taggen.
-```
+The web dashboard is available on port 5000 (default) when running. Access via:
 
-### Konfiguration
+- Local: `http://localhost:5000`
+- Docker: `http://<container-ip>:5000`
+- Compose: `http://<host-ip>:5000`
 
-`config/config.toml` steuert Pool, Netzwerk, Logging und Mining-Parameter.
+Disable web dashboard with `--no-web` flag or set `WEB_PORT` to 0.
+
+### Configuration
+
+`config/config.toml` controls pool, network, logging, and mining parameters.
 
 ```
 [pool]
@@ -106,11 +115,11 @@ host = "solo.ckpool.org"
 port = 3333
 
 [network]
-# Datenquelle für aktuelle Blockhöhe: "web" (Blockchain Explorer) oder "local" (eigener Bitcoin Core Node)
+# Block height source: "web" (Blockchain Explorer) or "local" (own Bitcoin Core Node)
 source = "web"            # web | local
 latest_block_url = "https://blockchain.info/latestblock"
 request_timeout_secs = 15
-# Für source = "local": Standard Bitcoin Core JSON-RPC
+# For source = "local": Standard Bitcoin Core JSON-RPC
 rpc_url = "http://127.0.0.1:8332"
 rpc_user = ""
 rpc_password = ""
@@ -129,73 +138,21 @@ backend = "cpu"  # cpu | cuda | opencl
 gpu_device = 0
 ```
 
-Override-Pfade per `--config` oder `CONFIG_FILE` möglich.
+Override paths via `--config` or `CONFIG_FILE` environment variable.
 
-Netzwerkquelle umschalten:
-- Webservice (Standard): keine weitere Aktion nötig; nutzt `https://blockchain.info/latestblock`.
-- Lokaler Node: setze in der Config `source = "local"` und trage `rpc_url`, `rpc_user`, `rpc_password` ein.
+Switching network source:
+- Webservice (default): no action needed; uses `https://blockchain.info/latestblock`.
+- Local node: set `source = "local"` in config and provide `rpc_url`, `rpc_user`, `rpc_password`.
 
 ### Logging
 
-- Neutrale, unauffällige Logmeldungen (keine Farben/Banner/Branding)
-- Log-Level und Datei via `[logging]` konfigurierbar
+- Neutral, unobtrusive log messages (no colors/banners/branding)
+- Log level and file configurable via `[logging]` section
 
-### Hinweise
+### Notes
 
-- GPU-Backend-Parameter sind vorbereitet; die Hash-Berechnung nutzt derzeit CPU. Eine CUDA/OpenCL-Implementierung kann modular über `compute` ergänzt werden.
+- GPU backend parameters are prepared; hash calculation currently uses CPU. A CUDA/OpenCL implementation can be added modularly via `compute` section.
 
-Clean refactor with professional layout, standard naming, and Docker support.
+### Releases
 
-### Structure
-
-```
-src/
-  BtcSoloMinerGpu/
-    __init__.py
-    __main__.py
-    cli.py
-    context.py
-    miner.py
-tests/
-requirements.txt
-Dockerfile
-.dockerignore
-.gitignore
-```
-
-### Run locally
-
-1) Install dependencies:
-```
-pip install -r requirements.txt
-```
-
-2) Run with wallet address (optional: custom config path):
-```
-python -m BtcSoloMinerGpu --wallet YOUR_BTC_ADDRESS --config ./config/config.toml --backend cpu --gpu 0
-```
-
-or via environment variable:
-```
-set WALLET_ADDRESS=YOUR_BTC_ADDRESS  # Windows
-set CONFIG_FILE=./config/config.toml
-set COMPUTE_BACKEND=cpu
-set GPU_DEVICE=0
-python -m BtcSoloMinerGpu
-```
-
-### Docker
-
-Build image:
-```
-docker build -t btcsominer-gpu .
-```
-
-Run (pass wallet via env):
-```
-docker run --rm --gpus all -e WALLET_ADDRESS=YOUR_BTC_ADDRESS -e COMPUTE_BACKEND=cuda -e GPU_DEVICE=0 btcsominer-gpu
-```
-
-Config file is TOML at `config/config.toml`. Override with `--config` or `CONFIG_FILE`.
-
-Press Ctrl+C to stop gracefully.
+Stable versions are published as tags. See Releases/Tags on GitHub. CI automatically creates releases when tagging.
