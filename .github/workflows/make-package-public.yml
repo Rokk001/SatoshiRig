@@ -40,9 +40,9 @@ jobs:
           # Wait a moment for any previous operations
           sleep 3
           
-          # First, list packages to see what's available
+          # First, list packages to see what's available (container type)
           echo "📋 Listing available packages..."
-          gh api user/packages --jq '.[] | select(.name == "satoshirig") | {name: .name, type: .package_type, visibility: .visibility}' || echo "Could not list packages"
+          gh api user/packages?package_type=container --jq '.[] | select(.name == "satoshirig") | {name: .name, type: .package_type, visibility: .visibility}' || echo "Could not list packages (this is optional)"
           
           # Method 1: Try user endpoint (for user-owned packages)
           echo ""
