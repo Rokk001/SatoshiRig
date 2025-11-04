@@ -1,372 +1,157 @@
-## SatoshiRig
+# SatoshiRig
 
-Minimal, neutral Bitcoin Solo-Mining Client with clean architecture, config via TOML, and Docker support.
+<div align="center">
 
-### Project Structure
+![SatoshiRig Logo](https://img.shields.io/badge/SatoshiRig-Bitcoin%20Solo%20Miner-orange?style=for-the-badge)
 
-```
-src/
-  SatoshiRig/
-    __init__.py
-    __main__.py
-    cli.py                 # argparse CLI, Dependency Injection
-    config.py              # TOML-Loader (CONFIG_FILE override supported)
-    miner.py               # Backward-compatible facade (import convenience)
-    clients/
-      pool_client.py       # CKPool TCP JSON client
-    core/
-      miner.py             # Miner class (core logic)
-      state.py             # MinerState dataclass
-      gpu_compute.py       # GPU compute module (CUDA/OpenCL support)
-    web/
-      server.py            # Flask web server with SocketIO for live dashboard
-config/
-  config.toml              # Default configuration
-```
+**A minimal, neutral Bitcoin solo-mining client with clean architecture, GPU support, and comprehensive web dashboard.**
 
-### Installation
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Docker](#-docker) • [GPU Mining](#-gpu-mining)
 
-```
-pip install -r requirements.txt
-```
+</div>
 
-### Run Locally
+---
 
-```
-python -m SatoshiRig --wallet YOUR_BTC_ADDRESS --config ./config/config.toml --backend cpu --gpu 0
-```
+## 📋 Table of Contents
 
-Alternatively via environment variables:
+- [Overview](#-overview)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Docker](#-docker)
+- [GPU Mining](#-gpu-mining)
+- [Web Dashboard](#-web-dashboard)
+- [Project Structure](#-project-structure)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
 
-```
-set WALLET_ADDRESS=YOUR_BTC_ADDRESS  # Windows
-set CONFIG_FILE=./config/config.toml
-set COMPUTE_BACKEND=cpu
-set GPU_DEVICE=0
-python -m SatoshiRig
-```
+---
 
-### Docker
+## 🎯 Overview
 
-#### Quick Start
+SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity, reliability, and performance. It features:
 
-**Option 1: Use published image from GHCR (recommended):**
+- **Clean Architecture**: Modular design with clear separation of concerns
+- **GPU Support**: CUDA and OpenCL support for accelerated mining
+- **Web Dashboard**: Real-time monitoring and control interface
+- **Docker Ready**: Fully containerized with NVIDIA GPU support
+- **Configuration**: Flexible TOML-based configuration
+- **Production Ready**: Built for long-running mining operations
+
+---
+
+## ✨ Features
+
+### Core Functionality
+- ✅ **Solo Mining**: Direct connection to CKPool for solo Bitcoin mining
+- ✅ **GPU Support**: CUDA and OpenCL backends with automatic fallback to CPU
+- ✅ **Parallel Batch Hashing**: Optimized batch processing (1024 nonces per iteration)
+- ✅ **Sequential Nonce Counter**: Complete coverage of the 32-bit nonce space
+- ✅ **Block Source**: Configurable source (Blockchain Explorer or local Bitcoin Core RPC)
+
+### Web Dashboard
+- 📊 **Real-time Monitoring**: Live hash rate, CPU, memory, and GPU metrics
+- 📈 **Performance Analytics**: Historical charts and trend analysis
+- 🧠 **Mining Intelligence**: Estimated time to block, probability calculations, profitability estimates
+- 🎨 **Modern UI**: Tabbed interface with dark/light theme support
+- 📱 **Responsive Design**: Works on desktop and mobile devices
+
+### Developer Experience
+- 🔧 **TOML Configuration**: Human-readable configuration files
+- 🐳 **Docker Support**: Pre-built images on GitHub Container Registry
+- 📝 **Comprehensive Logging**: Configurable log levels and file output
+- 🚀 **CI/CD Ready**: Automated builds and releases
+
+---
+
+## 🚀 Quick Start
+
+### Docker (Recommended)
 
 ```bash
-docker run --rm \
+# Pull and run the latest image
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
 
-**Option 2: Build locally:**
+### Local Installation
 
 ```bash
-docker build -t satoshirig .
-docker run --rm \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -p 5000:5000 \
-  satoshirig
+# Clone repository
+git clone https://github.com/Rokk001/SatoshiRig.git
+cd SatoshiRig
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run miner
+python -m SatoshiRig --wallet YOUR_BTC_ADDRESS
 ```
 
-#### Docker Image Details
+---
 
-- **Published Image:** `ghcr.io/rokk001/satoshirig:latest` (public, automatically updated)
-- **Base Image:** `python:3.11-slim`
-- **Working Directory:** `/app`
-- **Default Config:** `/app/config/config.toml`
-- **Default Web Port:** `5000`
+## 📦 Installation
 
-#### Environment Variables
+### Prerequisites
+
+- **Python**: 3.11 or higher
+- **Docker**: 19.03+ (for containerized deployment)
+- **NVIDIA Container Toolkit**: (for GPU mining with Docker)
+
+### Option 1: Docker (Recommended)
+
+The easiest way to run SatoshiRig is using the pre-built Docker image:
+
+```bash
+docker pull ghcr.io/rokk001/satoshirig:latest
+```
+
+### Option 2: Local Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Rokk001/SatoshiRig.git
+   cd SatoshiRig
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Install GPU dependencies (optional):**
+   ```bash
+   pip install pycuda>=2023.1 pyopencl>=2023.1.2
+   ```
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
 
 All configuration can be done via environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `WALLET_ADDRESS` | ✅ **Yes** | - | Your Bitcoin wallet address (REQUIRED) |
-| `CONFIG_FILE` | No | `/app/config/config.toml` | Path to TOML config file inside container |
+| `CONFIG_FILE` | No | `./config/config.toml` | Path to TOML config file |
 | `COMPUTE_BACKEND` | No | `cpu` | Compute backend: `cpu`, `cuda`, or `opencl` |
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 
-#### Docker Run Examples
+### Configuration File (`config/config.toml`)
 
-**Basic CPU Mining (with web dashboard):**
-```bash
-docker run --rm \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
+The configuration file supports the following sections:
 
-**CPU Mining (custom port, no web dashboard):**
-```bash
-docker run --rm \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e WEB_PORT=0 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**CPU Mining with custom config file:**
-```bash
-docker run --rm \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e CONFIG_FILE=/app/config/custom.toml \
-  -v /path/to/your/config:/app/config:ro \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-#### NVIDIA GPU Support
-
-**Method 1: Using --gpus flag (recommended for Docker 19.03+):**
-```bash
-docker run --rm --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e COMPUTE_BACKEND=cuda \
-  -e GPU_DEVICE=0 \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**Method 2: Using --runtime=nvidia (for older Docker versions or when --gpus is not available):**
-```bash
-docker run --rm --runtime=nvidia \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e COMPUTE_BACKEND=cuda \
-  -e GPU_DEVICE=0 \
-  -e NVIDIA_VISIBLE_DEVICES=all \
-  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**NVIDIA GPU - Specific GPU:**
-```bash
-docker run --rm --gpus device=0 \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e COMPUTE_BACKEND=cuda \
-  -e GPU_DEVICE=0 \
-  -e NVIDIA_VISIBLE_DEVICES=0 \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**NVIDIA GPU - Multiple GPUs:**
-```bash
-docker run --rm --gpus '"device=0,1"' \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e COMPUTE_BACKEND=cuda \
-  -e GPU_DEVICE=0 \
-  -e NVIDIA_VISIBLE_DEVICES=0,1 \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**Note:** The `--runtime=nvidia` parameter or `--gpus` flag is required for Docker containers that need NVIDIA GPU access. Ensure you have the NVIDIA Container Toolkit installed on your system.
-
-#### AMD/OpenCL GPU Support
-
-For AMD GPUs or integrated GPUs using OpenCL:
-
-```bash
-docker run --rm \
-  --device=/dev/dri:/dev/dri \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e COMPUTE_BACKEND=opencl \
-  -e GPU_DEVICE=0 \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-**Note:** GPU mining is implemented with parallel batch hashing (1024 nonces per iteration). The miner automatically initializes the selected GPU backend (CUDA or OpenCL) and falls back to CPU if the GPU is unavailable or not properly configured.
-
-#### Docker Run Parameters
-
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `--rm` | Automatically remove container when it exits | `--rm` |
-| `--gpus` | GPU access (Docker 19.03+) | `--gpus all` or `--gpus device=0` |
-| `--runtime` | Container runtime (for NVIDIA GPU) | `--runtime=nvidia` |
-| `--device` | Device access (for AMD/OpenCL) | `--device=/dev/dri:/dev/dri` |
-| `-p` | Port mapping (host:container) | `-p 5000:5000` or `-p 8080:5000` |
-| `-v` | Volume mount (host:container) | `-v ./config:/app/config:ro` |
-| `-e` | Environment variable | `-e WALLET_ADDRESS=...` |
-| `-d` | Run in detached mode | `-d` |
-| `--name` | Container name | `--name satoshirig` |
-
-#### Complete Docker Run Command Example
-
-**Full-featured example with all options:**
-```bash
-docker run -d \
-  --name satoshirig \
-  --restart unless-stopped \
-  --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  -e CONFIG_FILE=/app/config/config.toml \
-  -e COMPUTE_BACKEND=cuda \
-  -e GPU_DEVICE=0 \
-  -e NVIDIA_VISIBLE_DEVICES=all \
-  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-  -e WEB_PORT=5000 \
-  -v /path/to/config:/app/config:ro \
-  -p 5000:5000 \
-  ghcr.io/rokk001/satoshirig:latest
-```
-
-#### Building the Docker Image
-
-**Build from Dockerfile:**
-```bash
-docker build -t satoshirig .
-```
-
-**Build with custom tag:**
-```bash
-docker build -t satoshirig:v2.0.6 .
-```
-
-**Build with build arguments (if needed):**
-```bash
-docker build --build-arg PYTHON_VERSION=3.11 -t satoshirig .
-```
-
-#### Dockerfile Structure
-
-The Dockerfile creates a minimal Python 3.11 slim image with:
-- All Python dependencies installed
-- Source code copied to `/app/src`
-- Config files copied to `/app/config`
-- Default environment variables set
-- Entry point: `python -m SatoshiRig`
-
-#### Accessing the Web Dashboard
-
-After starting the container, access the web dashboard at:
-- **Local:** `http://localhost:5000` (or your mapped port)
-- **Remote:** `http://<host-ip>:5000` (or your mapped port)
-
-The dashboard shows:
-- Mining status
-- Current block height
-- Best difficulty
-- Hash rate
-- Uptime
-- Last hash
-- Wallet address with blockchain explorer link
-
-### Docker Compose (Unraid compatible)
-
-A pre-configured compose file is included (`docker-compose.yml`).
-
-**Important:** The compose file uses `build: .` to build from the local Dockerfile by default. 
-
-**Using the published Docker image (recommended):**
-The Docker image is now available on GitHub Container Registry (GHCR) and automatically set to public:
-- Image: `ghcr.io/rokk001/satoshirig:latest`
-- Status: Public (automatically set on publish)
-- Package: https://github.com/Rokk001?tab=packages&package_name=satoshirig
-
-To use the pre-built public image from GitHub Container Registry instead of building locally:
-1. In `docker-compose.yml`, comment out the `build:` section
-2. Uncomment the `image: ghcr.io/rokk001/satoshirig:latest` line
-3. The image will be pulled automatically from GHCR
-
-**Note:** The package is automatically set to public when published via the workflow. No manual steps required.
-
-1) Set environment variables (Unraid UI or `.env` in project directory):
-
-```
-WALLET_ADDRESS=YOUR_BTC_ADDRESS
-COMPUTE_BACKEND=cpu
-GPU_DEVICE=0
-NVIDIA_VISIBLE_DEVICES=all
-WEB_PORT=5000
-```
-
-2) Start:
-
-```
-docker compose up -d
-```
-
-**For Unraid - IMPORTANT:**
-
-If you see "access denied" errors for `ghcr.io/rokk001/satoshirig:latest`, Unraid is trying to pull an image instead of building locally.
-
-**Solution 1: Fix in Unraid UI**
-1. Go to Docker Compose Manager or container settings
-2. Make sure "Build" is selected, NOT "Image"
-3. If you see an "Image" field with `ghcr.io/rokk001/satoshirig:latest`, DELETE it or clear it completely
-4. Make sure "Build Context" points to the project directory (where Dockerfile is located)
-5. Make sure "Dockerfile" is set to `Dockerfile` or `./Dockerfile`
-6. Save and restart the stack
-
-**Solution 2: Use alternative compose file**
-If Unraid keeps overriding the settings, use the build-only compose file:
-```bash
-docker-compose -f docker-compose.build.yml up -d
-```
-
-**Solution 3: Manual fix**
-1. Stop the container in Unraid
-2. Edit the `docker-compose.yml` file directly in Unraid (via terminal or file manager)
-3. Search for any line starting with `image:` (even if commented)
-4. Remove or comment out ALL `image:` lines completely
-5. Make sure ONLY `build:` section exists (with `context: .` and `dockerfile: Dockerfile`)
-6. Save the file
-7. Restart the stack in Unraid
-
-**The compose file can use either `build:` for local builds or `image: ghcr.io/rokk001/satoshirig:latest` for the published image from GHCR.**
-
-**NVIDIA GPU Setup:**
-
-For NVIDIA GPU support in Docker Compose, you have two options:
-
-1. **Enable `runtime: nvidia` in docker-compose.yml** (uncomment the line):
-   ```yaml
-   runtime: nvidia
-   ```
-   This requires the NVIDIA Container Toolkit to be installed on your system.
-
-2. **Use `deploy.resources.reservations.devices`** (for Docker Compose v3.8+):
-   Uncomment the `deploy` section in `docker-compose.yml` instead of `runtime: nvidia`.
-
-**For Unraid:**
-- Install the "Nvidia Driver" plugin from Community Applications
-- Enable `runtime: nvidia` in the compose file (uncomment the line)
-- Set `COMPUTE_BACKEND=cuda` in your environment variables
-
-**For AMD/iGPU:**
-- You may need to pass through `/dev/dri` (see commented `devices` block in `docker-compose.yml`)
-
-### Web Dashboard
-
-The web dashboard is available on port 5000 (default) when running. Access via:
-
-- Local: `http://localhost:5000`
-- Docker: `http://<container-ip>:5000`
-- Compose: `http://<host-ip>:5000`
-
-Disable web dashboard with `--no-web` flag or set `WEB_PORT` to 0.
-
-**Features:**
-- **Tabbed Interface**: Overview, Performance, Analytics, Intelligence, History
-- **Real-time Monitoring**: Hash rate, CPU, Memory, GPU usage and temperature
-- **Mining Intelligence**: Estimated time to block (formatted in years/months/days), block found probability, profitability calculator
-- **Visualizations**: Hash rate history, difficulty trends, performance metrics charts
-- **Human-readable Formatting**: 
-  - Hash values display with magnitude units (K, M, G, T, P, E) - e.g., "145.79 KH/s" instead of "145788.53 H/s"
-  - Time estimates display in years, months, and days - e.g., "145883385836 Jahre, 0 Monate, 26.5 Tage"
-
-### Configuration
-
-`config/config.toml` controls pool, network, logging, and mining parameters.
-
-```
+```toml
 [pool]
 host = "solo.ckpool.org"
 port = 3333
@@ -376,6 +161,7 @@ port = 3333
 source = "web"            # web | local
 latest_block_url = "https://blockchain.info/latestblock"
 request_timeout_secs = 15
+
 # For source = "local": Standard Bitcoin Core JSON-RPC
 rpc_url = "http://127.0.0.1:8332"
 rpc_user = ""
@@ -383,7 +169,7 @@ rpc_password = ""
 
 [logging]
 file = "miner.log"
-level = "INFO"
+level = "INFO"            # DEBUG, INFO, WARNING, ERROR
 
 [miner]
 restart_delay_secs = 2
@@ -391,28 +177,344 @@ subscribe_thread_start_delay_secs = 4
 hash_log_prefix_zeros = 7
 
 [compute]
-backend = "cpu"  # cpu | cuda | opencl
+backend = "cpu"           # cpu | cuda | opencl
 gpu_device = 0
 ```
 
-Override paths via `--config` or `CONFIG_FILE` environment variable.
+### Command-Line Options
 
-Switching network source:
-- Webservice (default): no action needed; uses `https://blockchain.info/latestblock`.
-- Local node: set `source = "local"` in config and provide `rpc_url`, `rpc_user`, `rpc_password`.
+```bash
+python -m SatoshiRig --help
+```
 
-### Logging
+Available options:
+- `--wallet`, `-w`: Bitcoin wallet address (required)
+- `--config`: Path to configuration file
+- `--backend`: Compute backend (`cpu`, `cuda`, `opencl`)
+- `--gpu`: GPU device index
+- `--web-port`: Web dashboard port (default: 5000)
+- `--no-web`: Disable web dashboard
 
-- Neutral, unobtrusive log messages (no colors/banners/branding)
-- Log level and file configurable via `[logging]` section
+---
 
-### Notes
+## 🐳 Docker
 
-- **GPU Mining**: GPU mining support is implemented with CUDA/OpenCL backends. The Docker image uses NVIDIA CUDA base image (`nvidia/cuda:11.8.0-runtime-ubuntu22.04`) for proper GPU support. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) with sequential nonce counter for complete coverage. Enhanced GPU initialization with better error handling and device validation. For optimal performance, GPU kernels can be further optimized.
-- **Web Dashboard Formatting**: 
-  - Hash values (Hash Rate, Peak Hash Rate, Average Hash Rate, Total Hashes) are automatically formatted with magnitude units (K, M, G, T, P, E) for better readability.
-  - Estimated time to block is displayed in years, months, and days for easier comprehension of very large time periods.
+### Quick Start
 
-### Releases
+**Option 1: Use published image from GHCR (recommended):**
 
-Stable versions are published as tags. See Releases/Tags on GitHub. CI automatically creates releases when tagging.
+```bash
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**Option 2: Build locally:**
+
+```bash
+docker build -t satoshirig .
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -p 5000:5000 \
+  satoshirig
+```
+
+### Docker Image Details
+
+- **Published Image**: `ghcr.io/rokk001/satoshirig:latest` (public, automatically updated)
+- **Base Image**: `nvidia/cuda:11.8.0-devel-ubuntu22.04` (includes CUDA development tools)
+- **Working Directory**: `/app`
+- **Default Config**: `/app/config/config.toml`
+- **Default Web Port**: `5000`
+
+### Docker Compose
+
+Example `docker-compose.yml`:
+
+```yaml
+services:
+  satoshirig:
+    image: ghcr.io/rokk001/satoshirig:latest
+    container_name: satoshirig
+    restart: unless-stopped
+    runtime: nvidia
+    gpus: all
+    environment:
+      - WALLET_ADDRESS=YOUR_BTC_ADDRESS
+      - COMPUTE_BACKEND=cuda
+      - GPU_DEVICE=0
+      - WEB_PORT=5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./logs:/app/logs
+```
+
+Start with:
+```bash
+docker compose up -d
+```
+
+---
+
+## 🎮 GPU Mining
+
+### NVIDIA CUDA
+
+**Prerequisites:**
+- NVIDIA GPU with CUDA support
+- NVIDIA Container Toolkit installed
+- Docker with GPU support enabled
+
+**Method 1: Using --gpus flag (recommended for Docker 19.03+):**
+
+```bash
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
+  --gpus all \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**Method 2: Using --runtime=nvidia (for older Docker versions):**
+
+```bash
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
+  --runtime=nvidia \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**Specific GPU:**
+```bash
+docker run -d \
+  --name satoshirig \
+  --gpus device=0 \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+### AMD/OpenCL
+
+For AMD GPUs or integrated GPUs using OpenCL:
+
+```bash
+docker run -d \
+  --name satoshirig \
+  --device=/dev/dri:/dev/dri \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e COMPUTE_BACKEND=opencl \
+  -e GPU_DEVICE=0 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+### GPU Mining Notes
+
+- **Automatic Fallback**: The miner automatically falls back to CPU if GPU initialization fails
+- **Batch Processing**: GPU mining uses parallel batch hashing (1024 nonces per iteration)
+- **Sequential Nonce Counter**: Complete coverage of the 32-bit nonce space
+- **Performance**: Current implementation uses parallel CPU threads as a placeholder for optimized GPU kernels
+
+---
+
+## 📊 Web Dashboard
+
+The web dashboard provides real-time monitoring and control of your mining operation.
+
+### Access
+
+Once running, access the dashboard at:
+- **Local**: `http://localhost:5000`
+- **Docker**: `http://<container-ip>:5000`
+- **Remote**: `http://<host-ip>:5000`
+
+### Features
+
+#### Overview Tab
+- Mining status and basic metrics
+- Hash rate, uptime, and shares
+- Wallet address with blockchain explorer link
+- Pool connection status
+
+#### Performance Tab
+- **System Resources**: CPU, Memory, GPU usage and temperature
+- **Performance Dashboard**: Real-time metrics visualization
+- **GPU Monitoring**: NVIDIA GPU metrics (if available)
+
+#### Analytics Tab
+- **Hash Rate History**: Historical hash rate trends
+- **Difficulty History**: Network difficulty over time
+- **Comparison Charts**: Hash rate vs difficulty analysis
+
+#### Intelligence Tab
+- **Estimated Time to Block**: Formatted in years, months, and days
+- **Block Found Probability**: Probability of finding a block in the next hour
+- **Estimated Profitability**: BTC per day estimate
+- **Difficulty Trend**: Network difficulty trend analysis (increasing/decreasing/stable)
+
+#### History Tab
+- **Share History**: Recent share submissions
+- **Statistics Table**: Comprehensive mining statistics
+
+### Formatting
+
+- **Hash Values**: Automatically formatted with magnitude units (K, M, G, T, P, E)
+  - Example: `145.79 KH/s` instead of `145788.53 H/s`
+- **Time Estimates**: Displayed in years, months, and days
+  - Example: `143640979699 years, 10 months, 8.5 days`
+
+### Controls
+
+- **Pause/Resume**: Control mining via the web interface
+- **Theme Toggle**: Switch between dark and light themes
+- **Auto-refresh**: Real-time updates via WebSocket
+
+---
+
+## 📁 Project Structure
+
+```
+SatoshiRig/
+├── src/
+│   └── SatoshiRig/
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── cli.py                 # Command-line interface
+│       ├── config.py              # TOML configuration loader
+│       ├── miner.py               # Backward-compatible facade
+│       ├── clients/
+│       │   └── pool_client.py     # CKPool TCP JSON client
+│       ├── core/
+│       │   ├── miner.py           # Core mining logic
+│       │   ├── state.py            # Miner state management
+│       │   └── gpu_compute.py      # GPU compute (CUDA/OpenCL)
+│       └── web/
+│           └── server.py           # Flask web server with SocketIO
+├── config/
+│   └── config.toml                 # Default configuration
+├── .github/
+│   └── workflows/                  # CI/CD workflows
+├── Dockerfile                       # Docker image definition
+├── docker-compose.yml               # Docker Compose configuration
+├── pyproject.toml                   # Python project metadata
+├── requirements.txt                 # Python dependencies
+└── README.md                        # This file
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Docker Image Build Fails
+
+**Problem**: Build fails with CUDA header errors
+
+**Solution**: The Docker image uses `nvidia/cuda:11.8.0-devel-ubuntu22.04` which includes CUDA development tools. Ensure you're using the latest version of the Dockerfile.
+
+#### GPU Mining Not Working
+
+**Problem**: GPU mining falls back to CPU
+
+**Checklist**:
+1. Verify GPU is available: `nvidia-smi` (for NVIDIA)
+2. Ensure `--gpus all` or `--runtime=nvidia` is set
+3. Check `COMPUTE_BACKEND=cuda` or `COMPUTE_BACKEND=opencl` is set
+4. Review logs for GPU initialization errors
+5. Verify NVIDIA Container Toolkit is installed
+
+#### Web Dashboard Not Accessible
+
+**Problem**: Cannot access dashboard at `http://localhost:5000`
+
+**Solution**:
+1. Check if `WEB_PORT` is set to `0` (disabled)
+2. Verify port mapping: `-p 5000:5000` or `ports: ["5000:5000"]`
+3. Check firewall settings
+4. Review container logs for errors
+
+#### Package Visibility Issues
+
+**Problem**: Docker image not accessible from GHCR
+
+**Solution**: The package should be automatically set to public. If not:
+1. Go to GitHub Packages: https://github.com/Rokk001?tab=packages
+2. Select the `satoshirig` package
+3. Go to "Package settings" → "Change visibility" → "Make public"
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+### Code Style
+
+- Follow PEP 8 for Python code
+- Use type hints where appropriate
+- Add docstrings to functions and classes
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+## 🔗 Links
+
+- **GitHub Repository**: https://github.com/Rokk001/SatoshiRig
+- **Docker Image**: `ghcr.io/rokk001/satoshirig:latest`
+- **GitHub Packages**: https://github.com/Rokk001?tab=packages&package_name=satoshirig
+
+---
+
+## 📝 Notes
+
+### GPU Mining
+
+GPU mining support is implemented with CUDA/OpenCL backends. The Docker image uses NVIDIA CUDA base image (`nvidia/cuda:11.8.0-devel-ubuntu22.04`) for proper GPU support. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) with sequential nonce counter for complete coverage. Enhanced GPU initialization with better error handling and device validation. For optimal performance, GPU kernels can be further optimized.
+
+### Web Dashboard Formatting
+
+- Hash values (Hash Rate, Peak Hash Rate, Average Hash Rate, Total Hashes) are automatically formatted with magnitude units (K, M, G, T, P, E) for better readability.
+- Estimated time to block is displayed in years, months, and days for easier comprehension of very large time periods.
+
+---
+
+<div align="center">
+
+**Made with ❤️ for the Bitcoin community**
+
+⭐ Star this repo if you find it useful!
+
+</div>
