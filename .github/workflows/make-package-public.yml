@@ -1,0 +1,73 @@
+name: Make Package Public
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/make-package-public.yml'
+
+jobs:
+  make-public:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    
+    steps:
+      - name: Install GitHub CLI
+        run: |
+          type -p curl >/dev/null || (apt update && apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && apt update \
+          && apt install gh -y
+
+      - name: Make package public
+        run: |
+          PACKAGE_NAME="satoshirig"
+          echo "🔍 Attempting to make package public: ${PACKAGE_NAME}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Owner: ${{ github.repository_owner }}"
+          
+          # Wait a moment for any previous operations
+          sleep 2
+          
+          # Method 1: Try user endpoint
+          echo "📦 Trying user endpoint..."
+          if gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+            echo "✅ SUCCESS: Package set to public via user endpoint!"
+            exit 0
+          fi
+          
+          # Method 2: Try org endpoint
+          echo "📦 Trying org endpoint..."
+          if gh api -X PATCH /orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+            echo "✅ SUCCESS: Package set to public via org endpoint!"
+            exit 0
+          fi
+          
+          # Method 3: Try with repository owner name directly
+          echo "📦 Trying with owner name..."
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          if gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+            echo "✅ SUCCESS: Package set to public!"
+            exit 0
+          fi
+          
+          # If all methods fail, show error
+          echo "❌ Failed to set package to public automatically."
+          echo ""
+          echo "Please set it manually:"
+          echo "1. Go to: https://github.com/${{ github.repository_owner }}?tab=packages"
+          echo "2. Click on '${PACKAGE_NAME}' package"
+          echo "3. Click 'Package settings'"
+          echo "4. Scroll to 'Danger Zone'"
+          echo "5. Click 'Change visibility' → Select 'Public'"
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
