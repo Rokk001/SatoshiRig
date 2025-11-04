@@ -3,13 +3,14 @@ name: Build and Publish Docker Image
 on:
     push:
         tags:
-            - "v*"
+            - "v*"  # Always run on tags
         branches:
             - main
         paths:
             - 'Dockerfile'
             - 'docker-compose.yml'
             - '.github/workflows/docker-publish.yml'
+            - 'src/**'  # Also trigger on source code changes
     workflow_dispatch:
         inputs:
             tag:

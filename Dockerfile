@@ -1,6 +1,7 @@
 # For GPU support with NVIDIA, you can switch to an NVIDIA CUDA base image.
 # Default remains slim Python for portability; to use GPU, run container with --gpus or --runtime=nvidia.
 # Note: Using --runtime=nvidia requires NVIDIA Container Toolkit to be installed on the host.
+# SatoshiRig - Bitcoin solo mining client
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
