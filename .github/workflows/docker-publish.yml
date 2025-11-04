@@ -5,7 +5,11 @@ on:
         tags:
             - "v*"
         branches:
-            - main  # Also build on main branch pushes
+            - main
+        paths:
+            - 'Dockerfile'
+            - 'docker-compose.yml'
+            - '.github/workflows/docker-publish.yml'
     workflow_dispatch:
         inputs:
             tag:
