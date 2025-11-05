@@ -21,8 +21,9 @@ RUN rm -f /usr/bin/python /usr/bin/python3 && \
 WORKDIR /wheelhouse
 
 COPY requirements.txt ./
-RUN pip wheel --no-deps -r requirements.txt -w /wheelhouse
-RUN pip wheel --no-deps "pycuda>=2023.1" "pyopencl>=2023.1.2" -w /wheelhouse
+# Build wheels WITH dependencies so runtime can install offline from /wheelhouse
+RUN pip wheel -r requirements.txt -w /wheelhouse
+RUN pip wheel "pycuda>=2023.1" "pyopencl>=2023.1.2" -w /wheelhouse
 
 # -------- Runtime stage: lightweight CUDA runtime image --------
 FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
