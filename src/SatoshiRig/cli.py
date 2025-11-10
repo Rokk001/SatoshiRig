@@ -70,10 +70,12 @@ def main() :
 
     if WEB_AVAILABLE and not args.no_web :
         web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
-        from .web.server import update_status , set_miner_state
+        from .web.server import update_status , set_miner_state , set_config
         update_status("wallet_address" , wallet)
         # Set miner state reference for web API control
         set_miner_state(STATE)
+        # Set configuration reference for web UI (sanitized - no sensitive data)
+        set_config(cfg)
         # Determine blockchain explorer URL from config
         network_config = cfg.get("network" , {})
         if network_config.get("source") == "local" :

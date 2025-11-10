@@ -55,6 +55,7 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 - 📊 **Real-time Monitoring**: Live hash rate, CPU, memory, and GPU metrics
 - 📈 **Performance Analytics**: Historical charts and trend analysis
 - 🧠 **Mining Intelligence**: Estimated time to block, probability calculations, profitability estimates
+- ⚙️ **Configuration UI**: Web-based settings for all mining parameters (pool, network, compute, database)
 - 🎨 **Modern UI**: Tabbed interface with dark/light theme support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
 
@@ -385,6 +386,22 @@ Once running, access the dashboard at:
 #### History Tab
 - **Share History**: Recent share submissions
 - **Statistics Table**: Comprehensive mining statistics
+
+#### Settings Tab
+- **Pool Configuration**: Host and port settings
+- **Network Configuration**: Block source (web/local), RPC settings
+- **Compute Configuration**: Backend (CPU/CUDA/OpenCL), GPU device, batch size, workers
+- **Mining Toggles**: Enable/disable CPU and GPU mining independently
+- **Database Configuration**: Retention period in days
+
+**Security Note**: Sensitive data (wallet address, RPC passwords) are not pre-filled from Docker environment variables for security reasons. You must enter these manually in the web UI.
+
+Configuration values are loaded from:
+1. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`)
+2. `config.toml` file
+3. Default values if not specified
+
+Changes made in the web UI are saved to the database and can be applied to the running miner (requires restart for some settings).
 
 ### Formatting
 

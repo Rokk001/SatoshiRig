@@ -15,7 +15,7 @@ Updated: 2025-01-27
   - `cli.py`: argparse CLI; loads config, sets up logging, builds dependencies, starts `Miner`.
   - `config.py`: loads TOML config (`CONFIG_FILE` override supported).
   - `miner.py`: thin compatibility facade.
-  - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard with tabs (Overview, Performance, Analytics, Intelligence, History).
+  - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard with tabs (Overview, Performance, Analytics, Intelligence, History, Settings).
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
 - Containerization: `Dockerfile` (NVIDIA CUDA base image `nvidia/cuda:11.8.0-runtime-ubuntu22.04`), `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
 - CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags), `.github/workflows/docker-publish.yml` (builds and publishes Docker image to GHCR).
@@ -58,6 +58,7 @@ Updated: 2025-01-27
 - Docker Build Fix: Allow PyPI fallback for missing dependencies during Docker build.
 - Workflow Fix: Added `set +e` to prevent workflow failure when package visibility change fails.
 - Favicon Fix (v2.7.0): Fixed favicon display by implementing static routes (`/favicon.ico`, `/favicon.svg`) instead of data URI, improving browser compatibility and caching.
+- Web-based Configuration UI: Added Settings tab in web dashboard for managing all configuration options (pool, network, compute, database). Configuration values are loaded from Docker environment variables and config.toml, with sensitive data (wallet address, RPC passwords) left empty for security. Features include CPU/GPU mining toggles and database retention settings.
 - Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units), `v2.5.0` (GPU mining improvements with NVIDIA CUDA base image, enhanced GPU initialization, sequential nonce counter), `v2.5.1` (Dockerfile python symlink fix), `v2.5.2` (CUDA devel image for PyCUDA compilation), `v2.5.3` (Time formatting to English, documentation update), `v2.5.4` (Workflow fix: don't fail if package visibility change fails), `v2.5.5` (Favicon added, GPU monitoring support, Docker build fix, workflow improvements), `v2.5.6` (Code cleanup: remove trailing whitespace), `v2.6.0` (Security fixes, exception handling, encoding, GPU monitoring, workflow triggers, socket handling, hardcoded values, threading, random number generation, missing features), `v2.7.0` (Favicon fix: static route implementation for better browser compatibility).
  - GPU Nonce Fix: Corrected nonce endianness to little-endian in GPU batch hashing.
  - Pool Client Robustness: Improved line-buffered parsing of `mining.notify` to handle partial TCP frames.

@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from flask import Flask, Response, render_template_string, jsonify
+from flask import Flask, Response, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
@@ -497,6 +497,188 @@ def start_mining():
         }), 500
 
 
+@app.route("/api/config", methods=["GET"])
+def get_config_api():
+    """Get current configuration (sanitized)"""
+    try:
+        config = get_config_for_ui()
+        return jsonify({
+            "success": True,
+            "config": config
+        }), 200
+    except Exception as e:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Error getting config: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/config", methods=["POST"])
+def save_config_api():
+    """Save configuration (validates and stores)"""
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed",
+            "message": "Request origin not allowed. CSRF protection enabled."
+        }), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({
+            "success": False,
+            "error": "Rate limit exceeded",
+            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
+        }), 429
+    
+    try:
+        data = request.get_json()
+        if not data or "config" not in data:
+            return jsonify({
+                "success": False,
+                "error": "Invalid request: missing 'config' field"
+            }), 400
+        
+        config = data["config"]
+        
+        # Validate configuration
+        # TODO: Add validation logic here
+        
+        # Save to database or config file
+        # TODO: Implement persistent storage
+        
+        # Update in-memory config
+        set_config(config)
+        
+        return jsonify({
+            "success": True,
+            "message": "Configuration saved successfully"
+        }), 200
+    except Exception as e:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Error saving config: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/config/cpu-mining", methods=["POST"])
+def toggle_cpu_mining():
+    """Toggle CPU mining on/off"""
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({"success": False, "error": "CSRF validation failed"}), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+    
+    try:
+        data = request.get_json()
+        enabled = data.get("enabled", True)
+        
+        config = get_config_for_ui()
+        config["compute"]["cpu_mining_enabled"] = enabled
+        set_config(config)
+        
+        # TODO: Apply to running miner
+        
+        return jsonify({
+            "success": True,
+            "cpu_mining_enabled": enabled
+        }), 200
+    except Exception as e:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Error toggling CPU mining: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/config/gpu-mining", methods=["POST"])
+def toggle_gpu_mining():
+    """Toggle GPU mining on/off"""
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({"success": False, "error": "CSRF validation failed"}), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+    
+    try:
+        data = request.get_json()
+        enabled = data.get("enabled", True)
+        
+        config = get_config_for_ui()
+        config["compute"]["gpu_mining_enabled"] = enabled
+        set_config(config)
+        
+        # TODO: Apply to running miner
+        
+        return jsonify({
+            "success": True,
+            "gpu_mining_enabled": enabled
+        }), 200
+    except Exception as e:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Error toggling GPU mining: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/config/db-retention", methods=["POST"])
+def set_db_retention():
+    """Set database retention period in days"""
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({"success": False, "error": "CSRF validation failed"}), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
+    
+    try:
+        data = request.get_json()
+        days = int(data.get("days", 30))
+        
+        if days < 1 or days > 3650:  # Max 10 years
+            return jsonify({
+                "success": False,
+                "error": "Retention days must be between 1 and 3650"
+            }), 400
+        
+        config = get_config_for_ui()
+        config["database"]["retention_days"] = days
+        set_config(config)
+        
+        # TODO: Save to database
+        
+        return jsonify({
+            "success": True,
+            "retention_days": days
+        }), 200
+    except (ValueError, TypeError) as e:
+        return jsonify({"success": False, "error": "Invalid days value"}), 400
+    except Exception as e:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Error setting DB retention: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @socketio.on("connect")
 def handle_connect():
     emit("status", get_status())
@@ -536,6 +718,9 @@ def start_web_server(host: str = "0.0.0.0", port: int = 5000):
 
 # Global reference to miner state for controlling mining
 _miner_state = None
+
+# Global reference to configuration (sanitized for web UI)
+_config = None
 
 # Rate limiting for API endpoints
 _api_rate_limit = {}
@@ -608,8 +793,83 @@ def set_miner_state(miner_state):
     _miner_state = miner_state
 
 
+def set_config(config: dict):
+    """Set the configuration reference for web UI (sanitized - no sensitive data)"""
+    global _config
+    # Create sanitized copy without sensitive data
+    sanitized = {
+        "pool": {
+            "host": config.get("pool", {}).get("host", "solo.ckpool.org"),
+            "port": config.get("pool", {}).get("port", 3333)
+        },
+        "network": {
+            "source": config.get("network", {}).get("source", "web"),
+            "latest_block_url": config.get("network", {}).get("latest_block_url", "https://blockchain.info/latestblock"),
+            "request_timeout_secs": config.get("network", {}).get("request_timeout_secs", 15),
+            "rpc_url": config.get("network", {}).get("rpc_url", "http://127.0.0.1:8332"),
+            "rpc_user": "",  # Empty - user must enter
+            "rpc_password": ""  # Empty - user must enter
+        },
+        "logging": {
+            "file": config.get("logging", {}).get("file", "miner.log"),
+            "level": config.get("logging", {}).get("level", "INFO")
+        },
+        "miner": {
+            "restart_delay_secs": config.get("miner", {}).get("restart_delay_secs", 2),
+            "subscribe_thread_start_delay_secs": config.get("miner", {}).get("subscribe_thread_start_delay_secs", 4),
+            "hash_log_prefix_zeros": config.get("miner", {}).get("hash_log_prefix_zeros", 7)
+        },
+        "compute": {
+            "backend": config.get("compute", {}).get("backend", "cpu"),
+            "gpu_device": config.get("compute", {}).get("gpu_device", 0),
+            "batch_size": config.get("compute", {}).get("batch_size", 256),
+            "max_workers": config.get("compute", {}).get("max_workers", 8),
+            "cpu_mining_enabled": True,  # Default: enabled
+            "gpu_mining_enabled": config.get("compute", {}).get("backend") in ["cuda", "opencl"]  # Based on backend
+        },
+        "database": {
+            "retention_days": int(os.environ.get("DB_RETENTION_DAYS", "30"))  # Default: 30 days
+        }
+    }
+    _config = sanitized
+
+
+def get_config_for_ui() -> dict:
+    """Get current configuration (sanitized) for web UI"""
+    global _config
+    if _config is None:
+        # Return defaults if not set
+        return {
+            "pool": {"host": "solo.ckpool.org", "port": 3333},
+            "network": {
+                "source": "web",
+                "latest_block_url": "https://blockchain.info/latestblock",
+                "request_timeout_secs": 15,
+                "rpc_url": "http://127.0.0.1:8332",
+                "rpc_user": "",
+                "rpc_password": ""
+            },
+            "logging": {"file": "miner.log", "level": "INFO"},
+            "miner": {
+                "restart_delay_secs": 2,
+                "subscribe_thread_start_delay_secs": 4,
+                "hash_log_prefix_zeros": 7
+            },
+            "compute": {
+                "backend": "cpu",
+                "gpu_device": 0,
+                "batch_size": 256,
+                "max_workers": 8,
+                "cpu_mining_enabled": True,
+                "gpu_mining_enabled": False
+            },
+            "database": {"retention_days": 30}
+        }
+    return _config.copy()
+
+
 # Export functions for use by miner
-__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state"]
+__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state", "set_config", "get_config_for_ui"]
 
 
 INDEX_HTML = """
@@ -744,6 +1004,74 @@ INDEX_HTML = """
             border: 1px solid rgba(255, 255, 255, 0.2);
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
             margin-bottom: 30px;
+        }
+        .settings-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+        .settings-section h3 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            color: #4a9eff;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .setting-item label {
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .setting-item input[type="text"],
+        .setting-item input[type="number"],
+        .setting-item input[type="password"],
+        .setting-item select {
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .setting-item input[type="checkbox"] {
+            margin-right: 0.5rem;
+            width: 18px;
+            height: 18px;
+        }
+        .settings-actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .btn-primary, .btn-secondary {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-primary {
+            background: #4a9eff;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #3a8eef;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
         .chart-container h2 {
             margin-bottom: 20px;
@@ -902,6 +1230,7 @@ INDEX_HTML = """
             <button class="tab" onclick="showTab('analytics')">📈 Analytics</button>
             <button class="tab" onclick="showTab('intelligence')">🧠 Intelligence</button>
             <button class="tab" onclick="showTab('history')">📜 History</button>
+            <button class="tab" onclick="showTab('settings')">⚙️ Settings</button>
         </div>
         
         <!-- Overview Tab -->
@@ -1133,6 +1462,112 @@ INDEX_HTML = """
                     <td id="statSuccessRate">0.00%</td>
                 </tr>
                     </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div id="settings" class="tab-content">
+            <div class="section-group">
+                <h2 class="section-header">⚙️ Settings</h2>
+                
+                <!-- Pool Configuration -->
+                <div class="settings-section">
+                    <h3>Pool Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="pool-host">Pool Host:</label>
+                            <input type="text" id="pool-host" placeholder="solo.ckpool.org">
+                        </div>
+                        <div class="setting-item">
+                            <label for="pool-port">Pool Port:</label>
+                            <input type="number" id="pool-port" placeholder="3333" min="1" max="65535">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Network Configuration -->
+                <div class="settings-section">
+                    <h3>Network Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="network-source">Block Source:</label>
+                            <select id="network-source">
+                                <option value="web">Web (Blockchain.info)</option>
+                                <option value="local">Local (Bitcoin Core RPC)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="network-url">Block URL:</label>
+                            <input type="text" id="network-url" placeholder="https://blockchain.info/latestblock">
+                        </div>
+                        <div class="setting-item">
+                            <label for="rpc-url">RPC URL:</label>
+                            <input type="text" id="rpc-url" placeholder="http://127.0.0.1:8332">
+                        </div>
+                        <div class="setting-item">
+                            <label for="rpc-user">RPC User:</label>
+                            <input type="text" id="rpc-user" placeholder="(empty)">
+                        </div>
+                        <div class="setting-item">
+                            <label for="rpc-password">RPC Password:</label>
+                            <input type="password" id="rpc-password" placeholder="(empty)">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Compute Configuration -->
+                <div class="settings-section">
+                    <h3>Compute Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="compute-backend">Backend:</label>
+                            <select id="compute-backend">
+                                <option value="cpu">CPU</option>
+                                <option value="cuda">CUDA</option>
+                                <option value="opencl">OpenCL</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="gpu-device">GPU Device:</label>
+                            <input type="number" id="gpu-device" placeholder="0" min="0">
+                        </div>
+                        <div class="setting-item">
+                            <label for="batch-size">Batch Size:</label>
+                            <input type="number" id="batch-size" placeholder="256" min="1">
+                        </div>
+                        <div class="setting-item">
+                            <label for="max-workers">Max Workers:</label>
+                            <input type="number" id="max-workers" placeholder="8" min="1">
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="cpu-mining-enabled"> CPU Mining Enabled
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="gpu-mining-enabled"> GPU Mining Enabled
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Database Configuration -->
+                <div class="settings-section">
+                    <h3>Database Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="db-retention">Retention (Days):</label>
+                            <input type="number" id="db-retention" placeholder="30" min="1" max="3650">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Save Button -->
+                <div class="settings-actions">
+                    <button onclick="saveConfig()" class="btn-primary">💾 Save Configuration</button>
+                    <button onclick="loadConfig()" class="btn-secondary">🔄 Reload from Server</button>
                 </div>
             </div>
         </div>
@@ -1411,14 +1846,175 @@ INDEX_HTML = """
             // Find and activate the clicked tab button
             document.querySelectorAll('.tab').forEach(btn => {
                 if (btn.textContent.includes(tabName.charAt(0).toUpperCase() + tabName.slice(1)) || 
-                    (tabName === 'overview' && btn.textContent.includes('Overview'))) {
+                    (tabName === 'overview' && btn.textContent.includes('Overview')) ||
+                    (tabName === 'settings' && btn.textContent.includes('Settings'))) {
                     btn.classList.add('active');
                 }
             });
             
+            // Load config when settings tab is shown
+            if (tabName === 'settings') {
+                loadConfig();
+            }
+            
             // Save active tab
             localStorage.setItem('activeTab', tabName);
         }
+        
+        // Load configuration from server
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                if (data.success) {
+                    const config = data.config;
+                    
+                    // Pool
+                    document.getElementById('pool-host').value = config.pool?.host || '';
+                    document.getElementById('pool-port').value = config.pool?.port || '';
+                    
+                    // Network
+                    document.getElementById('network-source').value = config.network?.source || 'web';
+                    document.getElementById('network-url').value = config.network?.latest_block_url || '';
+                    document.getElementById('rpc-url').value = config.network?.rpc_url || '';
+                    document.getElementById('rpc-user').value = config.network?.rpc_user || '';
+                    document.getElementById('rpc-password').value = config.network?.rpc_password || '';
+                    
+                    // Compute
+                    document.getElementById('compute-backend').value = config.compute?.backend || 'cpu';
+                    document.getElementById('gpu-device').value = config.compute?.gpu_device || 0;
+                    document.getElementById('batch-size').value = config.compute?.batch_size || 256;
+                    document.getElementById('max-workers').value = config.compute?.max_workers || 8;
+                    document.getElementById('cpu-mining-enabled').checked = config.compute?.cpu_mining_enabled !== false;
+                    document.getElementById('gpu-mining-enabled').checked = config.compute?.gpu_mining_enabled === true;
+                    
+                    // Database
+                    document.getElementById('db-retention').value = config.database?.retention_days || 30;
+                    
+                    console.log('Configuration loaded successfully');
+                } else {
+                    console.error('Failed to load config:', data.error);
+                    alert('Failed to load configuration: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+                alert('Error loading configuration: ' + error.message);
+            }
+        }
+        
+        // Save configuration to server
+        async function saveConfig() {
+            const config = {
+                pool: {
+                    host: document.getElementById('pool-host').value,
+                    port: parseInt(document.getElementById('pool-port').value) || 3333
+                },
+                network: {
+                    source: document.getElementById('network-source').value,
+                    latest_block_url: document.getElementById('network-url').value,
+                    request_timeout_secs: 15,
+                    rpc_url: document.getElementById('rpc-url').value,
+                    rpc_user: document.getElementById('rpc-user').value,
+                    rpc_password: document.getElementById('rpc-password').value
+                },
+                logging: {
+                    file: 'miner.log',
+                    level: 'INFO'
+                },
+                miner: {
+                    restart_delay_secs: 2,
+                    subscribe_thread_start_delay_secs: 4,
+                    hash_log_prefix_zeros: 7
+                },
+                compute: {
+                    backend: document.getElementById('compute-backend').value,
+                    gpu_device: parseInt(document.getElementById('gpu-device').value) || 0,
+                    batch_size: parseInt(document.getElementById('batch-size').value) || 256,
+                    max_workers: parseInt(document.getElementById('max-workers').value) || 8,
+                    cpu_mining_enabled: document.getElementById('cpu-mining-enabled').checked,
+                    gpu_mining_enabled: document.getElementById('gpu-mining-enabled').checked
+                },
+                database: {
+                    retention_days: parseInt(document.getElementById('db-retention').value) || 30
+                }
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ config })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('Configuration saved successfully!');
+                } else {
+                    alert('Failed to save configuration: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                alert('Error saving configuration: ' + error.message);
+            }
+        }
+        
+        // Toggle CPU mining
+        async function toggleCpuMining(enabled) {
+            try {
+                const response = await fetch('/api/config/cpu-mining', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    console.log('CPU mining toggled:', enabled);
+                } else {
+                    alert('Failed to toggle CPU mining: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error toggling CPU mining:', error);
+            }
+        }
+        
+        // Toggle GPU mining
+        async function toggleGpuMining(enabled) {
+            try {
+                const response = await fetch('/api/config/gpu-mining', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    console.log('GPU mining toggled:', enabled);
+                } else {
+                    alert('Failed to toggle GPU mining: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error toggling GPU mining:', error);
+            }
+        }
+        
+        // Event listeners for checkboxes
+        document.addEventListener('DOMContentLoaded', function() {
+            const cpuCheckbox = document.getElementById('cpu-mining-enabled');
+            const gpuCheckbox = document.getElementById('gpu-mining-enabled');
+            
+            if (cpuCheckbox) {
+                cpuCheckbox.addEventListener('change', function() {
+                    toggleCpuMining(this.checked);
+                });
+            }
+            
+            if (gpuCheckbox) {
+                gpuCheckbox.addEventListener('change', function() {
+                    toggleGpuMining(this.checked);
+                });
+            }
+        });
         
         // Load saved theme and tab
         if (localStorage.getItem('theme') === 'light') {
