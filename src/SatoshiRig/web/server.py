@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, Response, render_template_string, jsonify
 from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
@@ -376,8 +376,8 @@ def favicon():
 <path d="M50 30 L58 42 L50 50 L42 42 Z M50 50 L58 62 L50 70 L42 62 Z" fill="#1a1a1a"/>
 <circle cx="50" cy="50" r="6" fill="#F7931A"/>
 </svg>'''
-    return app.response_class(
-        response=svg_content,
+    return Response(
+        svg_content,
         mimetype="image/svg+xml",
         headers={"Cache-Control": "public, max-age=31536000"}
     )
@@ -398,8 +398,8 @@ def index():
 def export_stats():
     """Export statistics as JSON"""
     stats = get_status()
-    return app.response_class(
-        response=json.dumps(stats, indent=2),
+    return Response(
+        json.dumps(stats, indent=2),
         mimetype="application/json",
         headers={"Content-Disposition": "attachment; filename=satoshirig-stats.json"}
     )
