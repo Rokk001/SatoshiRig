@@ -23,7 +23,7 @@ WORKDIR /wheelhouse
 COPY requirements.txt ./
 # Build wheels WITH dependencies so runtime can install offline from /wheelhouse
 RUN pip wheel -r requirements.txt -w /wheelhouse
-RUN pip wheel "pycuda>=2023.1" "pyopencl>=2023.1.2" -w /wheelhouse
+RUN pip wheel "pycuda>=2023.1" "pyopencl>=2023.1.2" "nvidia-ml-py>=12.0.0" -w /wheelhouse
 
 # -------- Runtime stage: lightweight CUDA runtime image --------
 FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
@@ -46,8 +46,10 @@ WORKDIR /app
 
 COPY --from=builder /wheelhouse /wheelhouse
 COPY requirements.txt ./
+# Install dependencies from wheels (PyCUDA, PyOpenCL, and nvidia-ml-py for GPU monitoring)
+# These will be available when running with --runtime=nvidia or --gpus
 RUN pip install --no-cache-dir --no-index --find-links=/wheelhouse -r requirements.txt && \
-    pip install --no-cache-dir --no-index --find-links=/wheelhouse pycuda pyopencl && \
+    pip install --no-cache-dir --no-index --find-links=/wheelhouse pycuda pyopencl nvidia-ml-py && \
     rm -rf /wheelhouse
 
 COPY src ./src
