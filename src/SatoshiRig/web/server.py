@@ -3,6 +3,7 @@ import logging
 import os
 import platform
 import psutil
+import secrets
 import threading
 import time
 from collections import deque
@@ -152,20 +153,43 @@ def update_performance_metrics():
         if PYNVML_AVAILABLE:
             try:
                 if not hasattr(update_performance_metrics, 'nvml_initialized'):
-                    pynvml.nvmlInit()
-                    update_performance_metrics.nvml_initialized = True
+                    try:
+                        pynvml.nvmlInit()
+                        update_performance_metrics.nvml_initialized = True
+                        logging.debug("NVML initialized successfully")
+                    except pynvml.NVMLError as e:
+                        logging.warning(f"NVML initialization failed: {e}")
+                        update_performance_metrics.nvml_initialized = False
+                        STATUS["gpu_usage"] = 0.0
+                        STATUS["gpu_temperature"] = 0.0
+                        STATUS["gpu_memory"] = 0.0
+                        return
                 
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                STATUS["gpu_usage"] = util.gpu
-                
-                temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                STATUS["gpu_temperature"] = temp
-                
-                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                STATUS["gpu_memory"] = (mem_info.used / mem_info.total) * 100
+                if update_performance_metrics.nvml_initialized:
+                    try:
+                        device_count = pynvml.nvmlDeviceGetCount()
+                        if device_count == 0:
+                            logging.debug("No NVIDIA GPUs found")
+                            STATUS["gpu_usage"] = 0.0
+                            STATUS["gpu_temperature"] = 0.0
+                            STATUS["gpu_memory"] = 0.0
+                        else:
+                            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                            STATUS["gpu_usage"] = util.gpu
+                            
+                            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+                            STATUS["gpu_temperature"] = temp
+                            
+                            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                            STATUS["gpu_memory"] = (mem_info.used / mem_info.total) * 100
+                    except (pynvml.NVMLError, AttributeError, IndexError) as e:
+                        logging.debug(f"GPU monitoring error: {e}")
+                        STATUS["gpu_usage"] = 0.0
+                        STATUS["gpu_temperature"] = 0.0
+                        STATUS["gpu_memory"] = 0.0
             except Exception as e:
-                logging.debug(f"GPU monitoring error: {e}")
+                logging.debug(f"Unexpected GPU monitoring error: {e}")
                 STATUS["gpu_usage"] = 0.0
                 STATUS["gpu_temperature"] = 0.0
                 STATUS["gpu_memory"] = 0.0
@@ -323,8 +347,11 @@ def start_performance_monitoring():
 
 
 app = Flask(__name__, static_url_path="/static")
-app.config["SECRET_KEY"] = "satoshirig-miner-status"
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Use environment variable for SECRET_KEY or generate a random one
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
+# CORS: Allow specific origins or localhost by default for security
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
+socketio = SocketIO(app, cors_allowed_origins=cors_origins)
 
 
 @app.route("/")

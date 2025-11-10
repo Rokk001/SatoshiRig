@@ -38,12 +38,14 @@ class Miner :
         # Initialize GPU miner if configured
         compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
         gpu_device = self.cfg.get("compute" , {}).get("gpu_device" , 0)
+        batch_size = self.cfg.get("compute" , {}).get("batch_size" , 256)
+        max_workers = self.cfg.get("compute" , {}).get("max_workers" , 8)
         
         if compute_backend == "cuda":
             try:
                 from .gpu_compute import create_gpu_miner
-                self.gpu_miner = create_gpu_miner("cuda", device_id=gpu_device, logger=self.log)
-                self.log.info(f"CUDA GPU miner initialized on device {gpu_device}")
+                self.gpu_miner = create_gpu_miner("cuda", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
+                self.log.info(f"CUDA GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
             except Exception as e:
                 self.log.error(f"Failed to initialize CUDA miner: {e}")
                 self.log.warning("Falling back to CPU mining")
@@ -51,8 +53,8 @@ class Miner :
         elif compute_backend == "opencl":
             try:
                 from .gpu_compute import create_gpu_miner
-                self.gpu_miner = create_gpu_miner("opencl", device_id=gpu_device, logger=self.log)
-                self.log.info(f"OpenCL GPU miner initialized on device {gpu_device}")
+                self.gpu_miner = create_gpu_miner("opencl", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
+                self.log.info(f"OpenCL GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
             except Exception as e:
                 self.log.error(f"Failed to initialize OpenCL miner: {e}")
                 self.log.warning("Falling back to CPU mining")
@@ -244,7 +246,9 @@ class Miner :
                     response_str = ret.decode() if isinstance(ret , bytes) else str(ret)
                     accepted = '"result":true' in response_str or '"result": true' in response_str or 'true' in response_str.lower()
                     add_share(accepted , response_str)
-                except :
+                except (ImportError, AttributeError, UnicodeDecodeError, Exception) as e:
+                    # Log but don't fail if web module is not available or share tracking fails
+                    self.log.debug(f"Could not track share: {e}")
                     pass
                 return True
 

@@ -61,6 +61,14 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         cfg["compute"]["gpu_device"] = int(cfg["compute"].get("gpu_device", os.environ.get("GPU_DEVICE", "0")))
     except Exception:
         cfg["compute"]["gpu_device"] = 0
+    try:
+        cfg["compute"]["batch_size"] = int(cfg["compute"].get("batch_size", os.environ.get("GPU_BATCH_SIZE", "256")))
+    except Exception:
+        cfg["compute"]["batch_size"] = 256
+    try:
+        cfg["compute"]["max_workers"] = int(cfg["compute"].get("max_workers", os.environ.get("GPU_MAX_WORKERS", "8")))
+    except Exception:
+        cfg["compute"]["max_workers"] = 8
 
     return cfg
 

@@ -106,11 +106,13 @@ __global__ void mine_sha256(
 class CUDAMiner:
     """CUDA-based GPU miner"""
     
-    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None):
+    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
         self.device_id = device_id
         self.log = logger or logging.getLogger("SatoshiRig.gpu.cuda")
         self.context = None
         self.device = None
+        self.batch_size = batch_size
+        self.max_workers = max_workers
         
         if not CUDA_AVAILABLE:
             raise RuntimeError("PyCUDA not available. Install with: pip install pycuda")
@@ -195,14 +197,13 @@ class CUDAMiner:
                 return (local_best, local_best_nonce)
             
             # Parallel batch processing
-            batch_size = 256
-            num_batches = (num_nonces + batch_size - 1) // batch_size
+            num_batches = (num_nonces + self.batch_size - 1) // self.batch_size
             
-            with ThreadPoolExecutor(max_workers=min(8, num_batches)) as executor:
+            with ThreadPoolExecutor(max_workers=min(self.max_workers, num_batches)) as executor:
                 futures = []
                 for i in range(num_batches):
-                    nonce_start = (start_nonce + i * batch_size) % (2**32)
-                    count = min(batch_size, num_nonces - i * batch_size)
+                    nonce_start = (start_nonce + i * self.batch_size) % (2**32)
+                    count = min(self.batch_size, num_nonces - i * self.batch_size)
                     futures.append(executor.submit(test_nonce_range, nonce_start, count))
                 
                 for future in futures:
@@ -223,7 +224,10 @@ class CUDAMiner:
         if self.context:
             try:
                 self.context.pop()
-            except:
+            except Exception as e:
+                # Log but don't fail on cleanup errors
+                if self.log:
+                    self.log.debug(f"Error during CUDA context cleanup: {e}")
                 pass
     
     def __del__(self):
@@ -233,12 +237,14 @@ class CUDAMiner:
 class OpenCLMiner:
     """OpenCL-based GPU miner"""
     
-    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None):
+    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
         self.device_id = device_id
         self.log = logger or logging.getLogger("SatoshiRig.gpu.opencl")
         self.context = None
         self.device = None
         self.queue = None
+        self.batch_size = batch_size
+        self.max_workers = max_workers
         
         if not OPENCL_AVAILABLE:
             raise RuntimeError("PyOpenCL not available. Install with: pip install pyopencl")
@@ -318,14 +324,13 @@ class OpenCLMiner:
                 return (local_best, local_best_nonce)
             
             # Parallel batch processing
-            batch_size = 256
-            num_batches = (num_nonces + batch_size - 1) // batch_size
+            num_batches = (num_nonces + self.batch_size - 1) // self.batch_size
             
-            with ThreadPoolExecutor(max_workers=min(8, num_batches)) as executor:
+            with ThreadPoolExecutor(max_workers=min(self.max_workers, num_batches)) as executor:
                 futures = []
                 for i in range(num_batches):
-                    nonce_start = (start_nonce + i * batch_size) % (2**32)
-                    count = min(batch_size, num_nonces - i * batch_size)
+                    nonce_start = (start_nonce + i * self.batch_size) % (2**32)
+                    count = min(self.batch_size, num_nonces - i * self.batch_size)
                     futures.append(executor.submit(test_nonce_range, nonce_start, count))
                 
                 for future in futures:
@@ -342,7 +347,7 @@ class OpenCLMiner:
             return None
 
 
-def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.Logger] = None):
+def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
     """
     Create a GPU miner instance based on backend type
     
@@ -350,6 +355,8 @@ def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.
         backend: 'cuda' or 'opencl'
         device_id: GPU device index
         logger: Optional logger instance
+        batch_size: Number of nonces per batch (default: 256)
+        max_workers: Maximum number of parallel workers (default: 8)
     
     Returns:
         CUDAMiner or OpenCLMiner instance
@@ -357,11 +364,11 @@ def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.
     if backend == "cuda":
         if not CUDA_AVAILABLE:
             raise RuntimeError("CUDA backend requested but PyCUDA not available")
-        return CUDAMiner(device_id=device_id, logger=logger)
+        return CUDAMiner(device_id=device_id, logger=logger, batch_size=batch_size, max_workers=max_workers)
     elif backend == "opencl":
         if not OPENCL_AVAILABLE:
             raise RuntimeError("OpenCL backend requested but PyOpenCL not available")
-        return OpenCLMiner(device_id=device_id, logger=logger)
+        return OpenCLMiner(device_id=device_id, logger=logger, batch_size=batch_size, max_workers=max_workers)
     else:
         raise ValueError(f"Unknown backend: {backend}")
 
