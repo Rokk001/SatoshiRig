@@ -69,6 +69,7 @@ jobs:
 
       - name: Make package public automatically
         run: |
+          set +e  # Don't exit on error - we'll handle failures gracefully
           PACKAGE_NAME="${{ env.PACKAGE_NAME }}"
           OWNER="${{ github.repository_owner }}"
           OWNER_LOWER=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
