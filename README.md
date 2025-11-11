@@ -431,15 +431,29 @@ SatoshiRig/
 │       ├── __main__.py
 │       ├── cli.py                 # Command-line interface
 │       ├── config.py              # TOML configuration loader
-│       ├── miner.py               # Backward-compatible facade
+│       ├── miner.py               # Backward-compatible facade (DEPRECATED)
 │       ├── clients/
+│       │   ├── __init__.py        # Client module exports
 │       │   └── pool_client.py     # CKPool TCP JSON client
 │       ├── core/
+│       │   ├── __init__.py        # Core module exports
 │       │   ├── miner.py           # Core mining logic
 │       │   ├── state.py            # Miner state management
 │       │   └── gpu_compute.py      # GPU compute (CUDA/OpenCL)
+│       ├── utils/
+│       │   ├── __init__.py        # Utility module exports
+│       │   └── formatting.py       # Formatting utilities (hash, time)
 │       └── web/
-│           └── server.py           # Flask web server with SocketIO
+│           ├── __init__.py        # Web module exports
+│           ├── server.py          # Flask web server with SocketIO
+│           └── status.py          # Status management
+├── tests/
+│   ├── __init__.py
+│   ├── unit/                      # Unit tests
+│   │   └── __init__.py
+│   ├── integration/                # Integration tests
+│   │   └── __init__.py
+│   └── test_smoke.py              # Smoke tests
 ├── config/
 │   └── config.toml                 # Default configuration
 ├── .github/

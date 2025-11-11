@@ -14,6 +14,7 @@ from flask import Flask, Response, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
+from ..utils.formatting import format_hash_number, format_time_to_block
 
 # Try to import GPU monitoring libraries
 try:
@@ -38,114 +39,11 @@ except Exception:
     CUDA_AVAILABLE = False
 
 
-STATUS_LOCK = threading.Lock()
-STATUS: Dict = {
-    "running": False,
-    "current_height": 0,
-    "best_difficulty": 0.0,
-    "hash_rate": 0.0,
-    "last_hash": None,
-    "uptime_seconds": 0,
-    "start_time": None,
-    "wallet_address": None,
-    "explorer_url": None,
-    "pool_connected": False,
-    "pool_host": None,
-    "pool_port": None,
-    "job_id": None,
-    "total_hashes": 0,
-    "peak_hash_rate": 0.0,
-    "average_hash_rate": 0.0,
-    "shares_submitted": 0,
-    "shares_accepted": 0,
-    "shares_rejected": 0,
-    "last_share_time": None,
-    "hash_rate_history": deque(maxlen=60),  # Last 60 data points (2 minutes at 2s intervals)
-    "difficulty_history": deque(maxlen=60),
-    # Performance & Monitoring (Feature 1)
-    "cpu_usage": 0.0,
-    "memory_usage": 0.0,
-    "gpu_usage": 0.0,
-    "gpu_temperature": 0.0,
-    "gpu_memory": 0.0,
-    # Mining Intelligence (Feature 2)
-    "estimated_time_to_block": None,
-    "block_found_probability": 0.0,
-    "estimated_profitability": 0.0,
-    "difficulty_trend": "stable",  # increasing, decreasing, stable
-    "network_difficulty": 0.0,
-    "target_difficulty": 0.0,
-    "errors": []
-}
-
-# Statistics tracking
-STATS_LOCK = threading.Lock()
-STATS = {
-    "total_hashes": 0,
-    "peak_hash_rate": 0.0,
-    "hash_rate_samples": deque(maxlen=300),  # Last 300 samples for average
-    "shares": deque(maxlen=100),  # Last 100 shares to prevent memory leak
-    "start_time": None
-}
-
-
-def update_status(key: str, value):
-    with STATUS_LOCK:
-        STATUS[key] = value
-        # Update statistics
-        if key == "hash_rate" and value:
-            with STATS_LOCK:
-                STATS["hash_rate_samples"].append(value)
-                if value > STATS["peak_hash_rate"]:
-                    STATS["peak_hash_rate"] = value
-                    STATUS["peak_hash_rate"] = value
-                if len(STATS["hash_rate_samples"]) > 0:
-                    avg = sum(STATS["hash_rate_samples"]) / len(STATS["hash_rate_samples"])
-                    STATUS["average_hash_rate"] = avg
-        if key == "total_hashes":
-            with STATS_LOCK:
-                STATS["total_hashes"] = value
-        if key == "shares_submitted":
-            with STATS_LOCK:
-                STATS["shares"].append({
-                    "timestamp": datetime.now().isoformat(),
-                    "accepted": value
-                })
-
-
-def get_status() -> Dict:
-    with STATUS_LOCK:
-        status = STATUS.copy()
-        # Add history arrays
-        status["hash_rate_history"] = list(status["hash_rate_history"])
-        status["difficulty_history"] = list(status["difficulty_history"])
-        # Add statistics
-        with STATS_LOCK:
-            status["total_hashes"] = STATS["total_hashes"]
-            # Convert deque to list and get last 10 shares
-            shares_list = list(STATS["shares"])
-            status["shares"] = shares_list[-10:]  # Last 10 shares
-        return status
-
-
-def add_share(accepted: bool, response: str = None):
-    with STATUS_LOCK:
-        if accepted:
-            STATUS["shares_accepted"] += 1
-        else:
-            STATUS["shares_rejected"] += 1
-        STATUS["shares_submitted"] += 1
-        STATUS["last_share_time"] = datetime.now().isoformat()
-        update_status("shares_submitted", STATUS["shares_submitted"])
-
-
-def update_pool_status(connected: bool, host: str = None, port: int = None):
-    with STATUS_LOCK:
-        STATUS["pool_connected"] = connected
-        if host:
-            STATUS["pool_host"] = host
-        if port:
-            STATUS["pool_port"] = port
+# Import status management from separate module
+from .status import (
+    STATUS, STATUS_LOCK, STATS, STATS_LOCK,
+    update_status, get_status, add_share, update_pool_status
+)
 
 
 # Performance & Monitoring Functions (Feature 1)
@@ -214,54 +112,8 @@ def update_performance_metrics():
 
 
 # Formatting Functions
-def format_hash_number(value: float, unit: str = "H/s") -> str:
-    """Format hash numbers with magnitude units (K, M, G, T, P, E)"""
-    if value == 0:
-        return f"0 {unit}"
-    
-    abs_value = abs(value)
-    if abs_value < 1000:
-        return f"{value:.2f} {unit}"
-    elif abs_value < 1_000_000:
-        return f"{value / 1000:.2f} K{unit}"
-    elif abs_value < 1_000_000_000:
-        return f"{value / 1_000_000:.2f} M{unit}"
-    elif abs_value < 1_000_000_000_000:
-        return f"{value / 1_000_000_000:.2f} G{unit}"
-    elif abs_value < 1_000_000_000_000_000:
-        return f"{value / 1_000_000_000_000:.2f} T{unit}"
-    elif abs_value < 1_000_000_000_000_000_000:
-        return f"{value / 1_000_000_000_000_000:.2f} P{unit}"
-    else:
-        return f"{value / 1_000_000_000_000_000_000:.2f} E{unit}"
-
-
 # Mining Intelligence Functions (Feature 2)
-def format_time_to_block(seconds: float) -> str:
-    """Convert seconds to human-readable format: years, months, days"""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    elif seconds < 3600:
-        return f"{seconds/60:.1f}m"
-    elif seconds < 86400:
-        return f"{seconds/3600:.1f}h"
-    else:
-        # Convert to years, months, days
-        total_days = seconds / 86400
-        years = int(total_days / 365)
-        remaining_days = total_days - (years * 365)
-        months = int(remaining_days / 30)
-        days = remaining_days - (months * 30)
-        
-        parts = []
-        if years > 0:
-            parts.append(f"{years} {'year' if years == 1 else 'years'}")
-        if months > 0:
-            parts.append(f"{months} {'month' if months == 1 else 'months'}")
-        if days > 0 or len(parts) == 0:
-            parts.append(f"{days:.1f} {'day' if days == 1 else 'days'}")
-        
-        return ", ".join(parts)
+# Formatting functions moved to utils.formatting
 
 
 def calculate_mining_intelligence():

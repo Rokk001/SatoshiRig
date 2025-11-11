@@ -457,11 +457,12 @@ class Miner :
             difficulty = reference_diff / this_hash_int
 
             # Ensure height_to_best_difficulty key exists (may have changed if new block detected)
-            if (current_height + 1) not in self.state.height_to_best_difficulty:
-                self.state.height_to_best_difficulty[current_height + 1] = 0
-            
-            if self.state.height_to_best_difficulty[current_height + 1] < difficulty :
-                self.state.height_to_best_difficulty[current_height + 1] = difficulty
+            with self.state._lock:
+                if (current_height + 1) not in self.state.height_to_best_difficulty:
+                    self.state.height_to_best_difficulty[current_height + 1] = 0
+                
+                if self.state.height_to_best_difficulty[current_height + 1] < difficulty:
+                    self.state.height_to_best_difficulty[current_height + 1] = difficulty
                 update_status("best_difficulty" , difficulty)
 
             elapsed = time.time() - start_time
