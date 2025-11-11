@@ -148,6 +148,7 @@ All configuration can be done via environment variables:
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
 | `GPU_UTILIZATION_PERCENT` | No | `100` | GPU utilization percentage (1-100%) for time-slicing support |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
+| `CORS_ORIGINS` | No | `http://localhost:5000,http://127.0.0.1:5000` | Comma-separated list of allowed CORS origins, or `*` to allow all origins (less secure) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 
@@ -398,6 +399,8 @@ Once running, access the dashboard at:
 - **Database Configuration**: Retention period in days
 
 **Security Note**: Sensitive data (wallet address, RPC passwords) are not pre-filled from Docker environment variables for security reasons. You must enter these manually in the web UI.
+
+**CSRF Protection**: The web dashboard includes CSRF protection. Same-origin requests are automatically allowed. For cross-origin access, set `CORS_ORIGINS` to a comma-separated list of allowed origins (e.g., `http://satoshirig.zhome.ch,http://localhost:5000`), or use `*` to allow all origins (less secure but convenient for local networks).
 
 Configuration values are loaded from:
 1. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`)
