@@ -512,7 +512,9 @@ class Miner:
                     # Use previous height as fallback
                     with self.state._lock:
                         current_height = (
-                            self.state.local_height if self.state.local_height > 0 else 0
+                            self.state.local_height
+                            if self.state.local_height > 0
+                            else 0
                         )
                     # current_height is now always defined
                     with self.state._lock:
@@ -604,7 +606,9 @@ class Miner:
                         try:
                             block_header_bytes = binascii.unhexlify(block_header)
                         except binascii.Error as e:
-                            self.log.error(f"Invalid block_header hex in GPU fallback: {block_header[:50]}... Error: {e}")
+                            self.log.error(
+                                f"Invalid block_header hex in GPU fallback: {block_header[:50]}... Error: {e}"
+                            )
                             continue
                         hash_hex = hashlib.sha256(
                             hashlib.sha256(block_header_bytes).digest()
@@ -628,7 +632,9 @@ class Miner:
                     try:
                         block_header_bytes = binascii.unhexlify(block_header)
                     except binascii.Error as e:
-                        self.log.error(f"Invalid block_header hex in GPU exception fallback: {block_header[:50]}... Error: {e}")
+                        self.log.error(
+                            f"Invalid block_header hex in GPU exception fallback: {block_header[:50]}... Error: {e}"
+                        )
                         continue
                     hash_hex = hashlib.sha256(
                         hashlib.sha256(block_header_bytes).digest()
@@ -651,7 +657,9 @@ class Miner:
                 try:
                     block_header_bytes = binascii.unhexlify(block_header)
                 except binascii.Error as e:
-                    self.log.error(f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}")
+                    self.log.error(
+                        f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}"
+                    )
                     continue
                 hash_hex = hashlib.sha256(
                     hashlib.sha256(block_header_bytes).digest()
@@ -681,7 +689,9 @@ class Miner:
             try:
                 this_hash_int = int(hash_hex, 16)
             except ValueError as e:
-                self.log.error(f"Invalid hash_hex format: {hash_hex[:50]}... Error: {e}")
+                self.log.error(
+                    f"Invalid hash_hex format: {hash_hex[:50]}... Error: {e}"
+                )
                 continue
 
             # Prevent division by zero (hash_hex could be all zeros)

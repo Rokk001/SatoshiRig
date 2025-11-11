@@ -820,7 +820,17 @@ def _check_rate_limit(client_ip: str) -> bool:
 def _check_csrf_protection(request) -> bool:
     """Check CSRF protection via Origin/Referer header validation"""
     # Get allowed origins from CORS configuration (use same as CORS settings)
-    allowed_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
+    cors_origins_str = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000")
+    
+    # If CORS_ORIGINS is "*", allow all origins (less secure but convenient)
+    if cors_origins_str.strip() == "*":
+        return True
+    
+    allowed_origins = cors_origins_str.split(",")
+    
+    # Get current request host (same-origin requests should always be allowed)
+    current_host = request.host  # e.g., "satoshirig.zhome.ch:5000" or "localhost:5000"
+    current_host_base = current_host.split(':')[0]  # Remove port if present
     
     # Get Origin or Referer header
     origin = request.headers.get('Origin')
@@ -832,24 +842,59 @@ def _check_csrf_protection(request) -> bool:
         # This is acceptable for a local mining application
         return True
     
-    # Check Origin header first (more reliable)
+    # Always allow same-origin requests (most secure - request comes from same domain)
+    if origin:
+        try:
+            origin_host = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
+            origin_host_base = origin_host.split(':')[0]  # Remove port if present
+            if origin_host_base == current_host_base:
+                return True
+        except (IndexError, AttributeError):
+            pass
+    
+    if referer:
+        try:
+            referer_host = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
+            referer_host_base = referer_host.split(':')[0]  # Remove port if present
+            if referer_host_base == current_host_base:
+                return True
+        except (IndexError, AttributeError):
+            pass
+    
+    # Check Origin header against allowed origins
     if origin:
         # Remove protocol and path, keep only origin
-        origin_base = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
-        for allowed in allowed_origins:
-            allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
-            if origin_base == allowed_base or origin_base in allowed_base or allowed_base in origin_base:
-                return True
+        try:
+            origin_base = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
+            origin_base_no_port = origin_base.split(':')[0]
+            for allowed in allowed_origins:
+                allowed = allowed.strip()
+                if not allowed:
+                    continue
+                allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
+                allowed_base_no_port = allowed_base.split(':')[0]
+                if origin_base_no_port == allowed_base_no_port or origin_base_no_port in allowed_base_no_port or allowed_base_no_port in origin_base_no_port:
+                    return True
+        except (IndexError, AttributeError):
+            pass
     
     # Fallback to Referer header
     if referer:
-        referer_base = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
-        for allowed in allowed_origins:
-            allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
-            if referer_base == allowed_base or referer_base in allowed_base or allowed_base in referer_base:
-                return True
+        try:
+            referer_base = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
+            referer_base_no_port = referer_base.split(':')[0]
+            for allowed in allowed_origins:
+                allowed = allowed.strip()
+                if not allowed:
+                    continue
+                allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
+                allowed_base_no_port = allowed_base.split(':')[0]
+                if referer_base_no_port == allowed_base_no_port or referer_base_no_port in allowed_base_no_port or allowed_base_no_port in referer_base_no_port:
+                    return True
+        except (IndexError, AttributeError):
+            pass
     
-    # If Origin/Referer doesn't match allowed origins, reject
+    # If Origin/Referer doesn't match allowed origins or current host, reject
     return False
 
 
@@ -1156,6 +1201,15 @@ INDEX_HTML = """
             background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
             color: var(--text-primary);
             box-shadow: var(--shadow-sm), 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        /* Tab Content - Hide inactive tabs */
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
         }
         
         /* Status Cards */
@@ -2514,14 +2568,9 @@ INDEX_HTML = """
             }
         }
         
+        // Restore saved tab on page load
         const savedTab = localStorage.getItem('activeTab') || 'overview';
-        if (savedTab !== 'overview') {
-            document.querySelectorAll('.tab').forEach(btn => {
-                if (btn.textContent.includes(savedTab.charAt(0).toUpperCase() + savedTab.slice(1))) {
-                    btn.click();
-                }
-            });
-        }
+        showTab(savedTab);
 
         socket.on('connect', () => {
             startRefresh();
