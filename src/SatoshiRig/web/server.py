@@ -87,7 +87,11 @@ def update_performance_metrics():
                             gpu_temperature = temp
                             
                             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                            gpu_memory = (mem_info.used / mem_info.total) * 100
+                            # Prevent division by zero
+                            if mem_info.total > 0:
+                                gpu_memory = (mem_info.used / mem_info.total) * 100
+                            else:
+                                gpu_memory = 0.0
                     except (pynvml.NVMLError, AttributeError, IndexError) as e:
                         logging.debug(f"GPU monitoring error: {e}")
             except Exception as e:
@@ -174,10 +178,14 @@ def calculate_mining_intelligence():
                 recent = list(STATUS["difficulty_history"])[-5:]
                 if len(recent) >= 2:
                     avg_recent = sum(recent[-3:]) / len(recent[-3:])
-                    avg_older = sum(recent[:-3]) / len(recent[:-3]) if len(recent) > 3 else recent[0]
-                    if avg_recent > avg_older * 1.05:
+                    # Prevent division by zero: check if recent[:-3] is not empty
+                    if len(recent) > 3 and len(recent[:-3]) > 0:
+                        avg_older = sum(recent[:-3]) / len(recent[:-3])
+                    else:
+                        avg_older = recent[0] if len(recent) > 0 else 0
+                    if avg_older > 0 and avg_recent > avg_older * 1.05:
                         STATUS["difficulty_trend"] = "increasing"
-                    elif avg_recent < avg_older * 0.95:
+                    elif avg_older > 0 and avg_recent < avg_older * 0.95:
                         STATUS["difficulty_trend"] = "decreasing"
                     else:
                         STATUS["difficulty_trend"] = "stable"
@@ -190,7 +198,8 @@ def calculate_mining_intelligence():
 # Background thread for performance monitoring
 def performance_monitor_thread():
     """Background thread to continuously update performance metrics"""
-    while True:
+    global _performance_running
+    while _performance_running:
         try:
             update_performance_metrics()
             calculate_mining_intelligence()
@@ -202,12 +211,19 @@ def performance_monitor_thread():
 
 # Start performance monitoring thread
 _performance_thread = None
+_performance_running = False
 def start_performance_monitoring():
     """Start the performance monitoring background thread"""
-    global _performance_thread
+    global _performance_thread, _performance_running
     if _performance_thread is None or not _performance_thread.is_alive():
+        _performance_running = True
         _performance_thread = threading.Thread(target=performance_monitor_thread, daemon=True)
         _performance_thread.start()
+
+def stop_performance_monitoring():
+    """Stop the performance monitoring background thread"""
+    global _performance_running
+    _performance_running = False
 
 
 app = Flask(__name__, static_url_path="/static")
@@ -297,7 +313,9 @@ def stop_mining():
                 "message": "Miner state not available. Miner may not be running."
             }), 503
         
-        _miner_state.shutdown_flag = True
+        # Thread-safe shutdown flag update
+        with _miner_state._lock:
+            _miner_state.shutdown_flag = True
         update_status("running", False)
         return jsonify({
             "success": True,
@@ -343,7 +361,9 @@ def start_mining():
                 "message": "Miner state not available. Miner may not be running."
             }), 503
         
-        _miner_state.shutdown_flag = False
+        # Thread-safe shutdown flag update
+        with _miner_state._lock:
+            _miner_state.shutdown_flag = False
         update_status("running", True)
         return jsonify({
             "success": True,
@@ -717,10 +737,11 @@ def handle_get_status():
 
 
 # Global flag to control broadcast thread
-_broadcast_running = True
+_broadcast_running = False
 
 def broadcast_status():
     global _broadcast_running
+    _broadcast_running = True
     while _broadcast_running:
         try:
             with STATUS_LOCK:
@@ -736,6 +757,12 @@ def broadcast_status():
         time.sleep(2)
 
 
+def stop_web_server():
+    """Stop background threads for web server"""
+    global _broadcast_running, _performance_running
+    _broadcast_running = False
+    stop_performance_monitoring()
+
 def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     logger = logging.getLogger("SatoshiRig.web")
     logger.info("Starting web server on %s:%s", host, port)
@@ -748,7 +775,11 @@ def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     # Start background threads
     threading.Thread(target=broadcast_status, daemon=True).start()
     start_performance_monitoring()
-    socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)
+    try:
+        socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)
+    finally:
+        # Cleanup on shutdown
+        stop_web_server()
 
 
 # Global reference to miner state for controlling mining

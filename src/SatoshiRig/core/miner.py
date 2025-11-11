@@ -87,10 +87,12 @@ class Miner :
         import copy
         
         # Deep merge config with deep copy to avoid reference issues
-        def deep_merge(base, update):
+        def deep_merge(base, update, depth=0, max_depth=50):
+            if depth > max_depth:
+                raise RuntimeError(f"deep_merge recursion depth exceeded {max_depth}, possible circular reference")
             for key, value in update.items():
                 if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                    deep_merge(base[key], value)
+                    deep_merge(base[key], value, depth + 1, max_depth)
                 else:
                     # Deep copy to avoid reference issues
                     base[key] = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
@@ -116,7 +118,7 @@ class Miner :
             self._initialize_gpu_miner()
 
     def _get_current_block_height(self) -> int :
-        net = self.cfg["network"]
+        net = self.cfg.get("network", {})
         source = (net.get("source") or "web").lower()
         max_retries = 3
         retry_delay = 2  # seconds
@@ -166,8 +168,23 @@ class Miner :
             raise RuntimeError("Failed to get block height: unknown error")
 
     def _build_block_header(self , prev_hash , merkle_root , ntime , nbits , nonce_hex) :
+        # Validate all required fields
+        with self.state._lock:
+            version = self.state.version
+        
+        if not version or not prev_hash or not merkle_root or not ntime or not nbits or not nonce_hex:
+            missing = []
+            if not version: missing.append("version")
+            if not prev_hash: missing.append("prev_hash")
+            if not merkle_root: missing.append("merkle_root")
+            if not ntime: missing.append("ntime")
+            if not nbits: missing.append("nbits")
+            if not nonce_hex: missing.append("nonce_hex")
+            self.log.error(f"Missing required fields for block header: {', '.join(missing)}")
+            raise RuntimeError(f"Missing required fields for block header: {', '.join(missing)}")
+        
         return (
-            self.state.version + prev_hash + merkle_root + ntime + nbits + nonce_hex +
+            version + prev_hash + merkle_root + ntime + nbits + nonce_hex +
             '000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000'
         )
 
@@ -214,8 +231,9 @@ class Miner :
     def _mine_loop(self) :
         with self.state._lock:
             if self.state.height_to_best_difficulty.get(-1) == -1:
-                if self.cfg["miner"]["restart_delay_secs"]:
-                    time.sleep(self.cfg["miner"]["restart_delay_secs"])
+                restart_delay = self.cfg.get("miner", {}).get("restart_delay_secs", 2)
+                if restart_delay:
+                    time.sleep(restart_delay)
 
         # Validate nbits before target calculation to prevent crashes
         with self.state._lock:
@@ -263,6 +281,11 @@ class Miner :
             coinbase_part2 = self.state.coinbase_part2
             merkle_branch = self.state.merkle_branch
         
+        # Validate required fields before building coinbase
+        if not coinbase_part1 or not extranonce1 or not coinbase_part2:
+            self.log.error(f"Missing required coinbase fields: coinbase_part1={coinbase_part1 is not None}, extranonce1={extranonce1 is not None}, coinbase_part2={coinbase_part2 is not None}")
+            raise RuntimeError("Missing required coinbase fields. Pool may not have sent complete mining notification.")
+        
         coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
         coinbase_hash_bin = hashlib.sha256(hashlib.sha256(binascii.unhexlify(coinbase)).digest()).digest()
 
@@ -274,6 +297,10 @@ class Miner :
                 ).digest()
 
         merkle_root = binascii.hexlify(merkle_root).decode()
+        # Reverse byte order (little-endian to big-endian) - ensure even length
+        if len(merkle_root) % 2 != 0:
+            self.log.error(f"Invalid merkle_root hex length: {len(merkle_root)}")
+            raise RuntimeError(f"Invalid merkle_root hex length: {len(merkle_root)}")
         merkle_root = ''.join([merkle_root[i] + merkle_root[i + 1] for i in range(0, len(merkle_root), 2)][::-1])
 
         # Get current height with timeout handling to prevent blocking
@@ -292,7 +319,7 @@ class Miner :
         self.log.info('Mining block height %s' , current_height + 1)
         update_status("current_height" , current_height + 1)
 
-        prefix_zeros = '0' * self.cfg["miner"]["hash_log_prefix_zeros"]
+        prefix_zeros = '0' * self.cfg.get("miner", {}).get("hash_log_prefix_zeros", 7)
         hash_count = 0
         start_time = time.time()
 
@@ -306,6 +333,13 @@ class Miner :
                 update_status("running", False)
                 update_pool_status(False)
                 self._running = False
+                # Cleanup GPU miner before shutdown
+                if self.gpu_miner:
+                    try:
+                        self.gpu_miner.cleanup()
+                        self.log.debug("GPU miner cleaned up on shutdown")
+                    except Exception as e:
+                        self.log.debug(f"Error cleaning up GPU miner on shutdown: {e}")
                 break
 
             if prev_hash != updated_prev_hash:
@@ -356,7 +390,7 @@ class Miner :
             hash_hex = None
             nonce_hex = None
             
-                # Use GPU miner if enabled and available, otherwise use CPU
+            # Use GPU miner if enabled and available, otherwise use CPU
             if gpu_mining_enabled and self.gpu_miner:
                 # GPU mining: test multiple nonces in parallel batch
                 with self.state._lock:
@@ -376,7 +410,7 @@ class Miner :
                     result = self.gpu_miner.hash_block_header(block_header_hex, num_nonces=num_nonces_per_batch, start_nonce=self.gpu_nonce_counter)
                     batch_duration = time.time() - batch_start_time
                     
-                    if result:
+                    if result and isinstance(result, tuple) and len(result) == 2:
                         hash_hex, best_nonce = result
                         nonce_hex = f"{best_nonce:08x}"
                         # Update hash count based on actual batch size
@@ -425,14 +459,14 @@ class Miner :
                     self.total_hash_count += 1
                     self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
                     update_status("total_hashes" , self.total_hash_count)
-                elif cpu_mining_enabled:
-                    # CPU mining (original implementation)
-                    with self.state._lock:
-                        prev_hash = self.state.prev_hash
-                        ntime = self.state.ntime
-                        nbits = self.state.nbits
-                    nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
-                    block_header = self._build_block_header(prev_hash, merkle_root, ntime, nbits, nonce_hex)
+            elif cpu_mining_enabled:
+                # CPU mining (original implementation)
+                with self.state._lock:
+                    prev_hash = self.state.prev_hash
+                    ntime = self.state.ntime
+                    nbits = self.state.nbits
+                nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
+                block_header = self._build_block_header(prev_hash, merkle_root, ntime, nbits, nonce_hex)
                 hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
                 hash_hex = binascii.hexlify(hash_hex).decode()
                 hash_count += 1
@@ -454,6 +488,11 @@ class Miner :
                 update_status("last_hash" , hash_hex)
             this_hash_int = int(hash_hex , 16)
 
+            # Prevent division by zero (hash_hex could be all zeros)
+            if this_hash_int == 0:
+                self.log.warning(f"Hash is zero, skipping difficulty calculation: {hash_hex}")
+                continue
+            
             difficulty = reference_diff / this_hash_int
 
             # Ensure height_to_best_difficulty key exists (may have changed if new block detected)

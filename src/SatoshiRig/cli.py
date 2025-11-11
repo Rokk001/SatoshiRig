@@ -95,6 +95,14 @@ def main() :
         web_thread.start()
         logger.info("Web dashboard started on port %s" , web_port)
 
-    miner.start()
+    try:
+        miner.start()
+    finally:
+        # Cleanup: Close pool connection
+        try:
+            pool.close()
+            logger.debug("Pool connection closed")
+        except Exception as e:
+            logger.debug(f"Error closing pool connection: {e}")
 
 
