@@ -4,6 +4,7 @@ import argparse
 import logging
 import threading
 import time
+import atexit
 from signal import SIGINT , signal
 
 from .config import load_config
@@ -24,6 +25,12 @@ STATE = MinerState()
 def _handle_sigint(signal_received , frame) :
     STATE.shutdown_flag = True
     print("Terminating miner, please wait…")
+    # Save statistics on shutdown
+    try:
+        from .web.status import save_statistics_now
+        save_statistics_now()
+    except Exception:
+        pass  # Ignore errors during shutdown
 
 
 def main() :
@@ -74,6 +81,7 @@ def main() :
     if WEB_AVAILABLE and not args.no_web :
         web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
         from .web.server import update_status , set_miner_state , set_config , set_miner
+        from .web.status import save_statistics_now
         update_status("wallet_address" , wallet)
         # Set miner state reference for web API control
         set_miner_state(STATE)
@@ -94,6 +102,9 @@ def main() :
         web_thread = threading.Thread(target = start_web_server , args = ("0.0.0.0" , web_port) , daemon = True)
         web_thread.start()
         logger.info("Web dashboard started on port %s" , web_port)
+        
+        # Register shutdown handler to save statistics
+        atexit.register(save_statistics_now)
 
     try:
         miner.start()
@@ -104,5 +115,12 @@ def main() :
             logger.debug("Pool connection closed")
         except Exception as e:
             logger.debug(f"Error closing pool connection: {e}")
+        # Save statistics on exit
+        if WEB_AVAILABLE and not args.no_web:
+            try:
+                from .web.status import save_statistics_now
+                save_statistics_now()
+            except Exception as e:
+                logger.debug(f"Error saving statistics on exit: {e}")
 
 

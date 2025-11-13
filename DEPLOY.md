@@ -7,7 +7,7 @@ This project uses a small CUDA runtime image and the NVIDIA Container Toolkit fo
 1. GitHub → Actions → "Build and Publish Docker Image".
 2. Click "Run workflow" → Run.
    - Builds the multi-stage image and pushes `ghcr.io/<owner>/satoshirig:latest`.
-3. Optional: For a GitHub release, run "Create GitHub Release" (you may provide a `tag`, e.g., `v2.6.0`).
+3. Optional: For a GitHub release, run "Create GitHub Release" (you may provide a `tag`, e.g., `v2.14.0`).
 
 Notes:
 - Workflows are manual only; they do not run on push/tag automatically.
@@ -48,8 +48,12 @@ services:
       - COMPUTE_BACKEND=cuda
       - GPU_DEVICE=0
       - WEB_PORT=5000
+      - STATS_FILE=/app/data/statistics.json
     ports:
       - "5000:5000"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data  # Persistent statistics storage
 ```
 
 ## 3) Local build (optional)

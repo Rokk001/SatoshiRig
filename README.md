@@ -57,6 +57,8 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 - 🧠 **Mining Intelligence**: Estimated time to block, probability calculations, profitability estimates
 - ⚙️ **Configuration UI**: Web-based settings for all mining parameters (pool, network, compute, database)
 - 🎛️ **GPU Utilization Control**: Configure GPU usage percentage (1-100%) to allow other GPU tasks to run simultaneously
+- 💾 **Persistent Statistics**: Statistics are automatically saved and persist across Docker restarts
+- 🔄 **CPU/GPU Toggle Control**: Independent toggles for CPU and GPU mining with intelligent backend selection
 - 🎨 **Modern UI**: Tabbed interface with dark/light theme support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
 
@@ -148,6 +150,7 @@ All configuration can be done via environment variables:
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
 | `GPU_UTILIZATION_PERCENT` | No | `100` | GPU utilization percentage (1-100%) for time-slicing support |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
+| `STATS_FILE` | No | `/app/data/statistics.json` | Path to persistent statistics file |
 | `CORS_ORIGINS` | No | `http://localhost:5000,http://127.0.0.1:5000` | Comma-separated list of allowed CORS origins, or `*` to allow all origins (less secure) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
@@ -257,7 +260,23 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./data:/app/data  # Persistent statistics storage
+
+### Persistent Statistics
+
+SatoshiRig automatically saves mining statistics to a persistent JSON file (`/app/data/statistics.json` by default). This ensures that your statistics (total hashes, peak hash rate, shares submitted/accepted/rejected) are preserved across Docker container restarts.
+
+The statistics file is automatically:
+- **Loaded on startup**: Previous statistics are restored when the container starts
+- **Saved periodically**: Statistics are auto-saved every 10 status updates
+- **Saved on shutdown**: Final statistics are saved when the container stops
+
+To persist statistics in Docker, mount a volume for the data directory:
+```yaml
+volumes:
+  - ./data:/app/data
+```
 
 ### NVIDIA Container Toolkit
 
@@ -392,10 +411,15 @@ Once running, access the dashboard at:
 - **Statistics Table**: Comprehensive mining statistics
 
 #### Settings Tab
+- **Wallet Configuration**: Bitcoin wallet address management
 - **Pool Configuration**: Host and port settings
 - **Network Configuration**: Block source (web/local), RPC settings
-- **Compute Configuration**: Backend (CPU/CUDA/OpenCL), GPU device, batch size, workers, GPU utilization percentage
-- **Mining Toggles**: Enable/disable CPU and GPU mining independently
+- **Compute Configuration**: 
+  - GPU Backend selection (CUDA/OpenCL) - only for GPU mining
+  - GPU device, batch size, workers, GPU utilization percentage
+  - **CPU Mining Toggle**: Enable/disable CPU mining (automatically sets backend to "cpu" when enabled)
+  - **GPU Mining Toggle**: Enable/disable GPU mining (uses selected GPU backend)
+  - Both CPU and GPU can be enabled simultaneously for combined mining
 - **Database Configuration**: Retention period in days
 
 **Security Note**: Sensitive data (wallet address, RPC passwords) are not pre-filled from Docker environment variables for security reasons. You must enter these manually in the web UI.
