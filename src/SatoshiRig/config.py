@@ -29,8 +29,8 @@ def _bool_from_str(value: str, default: bool = False) -> bool:
 def _apply_db_overrides(cfg: Dict[str, Any]) -> None:
     # Wallet
     wallet_addr = get_value("settings", "wallet_address")
-    if wallet_addr is not None:
-        cfg.setdefault("wallet", {})["address"] = wallet_addr
+    if wallet_addr is not None and wallet_addr.strip():  # Ignore empty strings
+        cfg.setdefault("wallet", {})["address"] = wallet_addr.strip()
 
     # Pool
     pool_cfg = cfg.setdefault("pool", {})
@@ -188,6 +188,12 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         cfg["compute"]["gpu_utilization_percent"] = max(1, min(100, gpu_util))
     except Exception:
         cfg["compute"]["gpu_utilization_percent"] = 100
+    
+    # Set defaults for mining toggles if not present
+    if "cpu_mining_enabled" not in cfg["compute"]:
+        cfg["compute"]["cpu_mining_enabled"] = True  # Default: CPU mining enabled
+    if "gpu_mining_enabled" not in cfg["compute"]:
+        cfg["compute"]["gpu_mining_enabled"] = False  # Default: GPU mining disabled
 
     return cfg
 
