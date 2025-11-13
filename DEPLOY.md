@@ -29,6 +29,8 @@ docker run -d --name satoshirig --restart unless-stopped \
   --gpus all \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/<owner>/satoshirig:latest
 ```
@@ -48,12 +50,11 @@ services:
       - COMPUTE_BACKEND=cuda
       - GPU_DEVICE=0
       - WEB_PORT=5000
-      - STATS_FILE=/app/data/statistics.json
     ports:
       - "5000:5000"
     volumes:
       - ./config:/app/config
-      - ./data:/app/data  # Persistent statistics storage
+      - ./data:/app/data  # Persistent settings/statistics storage
 ```
 > Configure `[wallet].address` in `config/config.toml` (or via the web UI once the container is up) and restart the service to begin mining.
 
@@ -63,6 +64,8 @@ services:
 docker build -t satoshirig .
 docker run -d --name satoshirig --restart unless-stopped \
   --gpus all \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   satoshirig
 ```

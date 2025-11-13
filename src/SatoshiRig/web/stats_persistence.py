@@ -1,108 +1,77 @@
 """Persistent statistics storage for SatoshiRig."""
 import json
 import os
-import threading
 from datetime import datetime
 from typing import Dict
 
+from ..db import get_value, set_value
 
-# Default path for statistics file
+# Backward-compatibility: legacy JSON file path
 DEFAULT_STATS_FILE = os.path.join(
     os.environ.get("DATA_DIR", "/app/data"),
     "statistics.json"
 )
 
-# Lock for thread-safe file operations
-FILE_LOCK = threading.Lock()
 
-
-def ensure_data_dir():
-    """Ensure the data directory exists."""
-    stats_file = os.environ.get("STATS_FILE", DEFAULT_STATS_FILE)
-    data_dir = os.path.dirname(os.path.abspath(stats_file))
-    os.makedirs(data_dir, exist_ok=True)
+def _load_db_stats() -> Dict:
+    stats = {}
+    stats["total_hashes"] = int(float(get_value("stats", "total_hashes", "0") or 0))
+    stats["peak_hash_rate"] = float(get_value("stats", "peak_hash_rate", "0.0") or 0.0)
+    stats["shares_submitted"] = int(get_value("stats", "shares_submitted", "0") or 0)
+    stats["shares_accepted"] = int(get_value("stats", "shares_accepted", "0") or 0)
+    stats["shares_rejected"] = int(get_value("stats", "shares_rejected", "0") or 0)
+    stats["last_updated"] = get_value("stats", "last_updated")
+    return stats
 
 
 def load_statistics() -> Dict:
-    """Load persistent statistics from file."""
-    stats_file = os.environ.get("STATS_FILE", DEFAULT_STATS_FILE)
-    
-    if not os.path.exists(stats_file):
-        return {
-            "total_hashes": 0,
-            "peak_hash_rate": 0.0,
-            "shares_submitted": 0,
-            "shares_accepted": 0,
-            "shares_rejected": 0,
-            "last_updated": None
-        }
-    
-    try:
-        with FILE_LOCK:
-            with open(stats_file, 'r', encoding='utf-8') as f:
+    """Load persistent statistics from storage."""
+    stats = _load_db_stats()
+
+    # If DB is empty but legacy JSON exists, migrate once
+    if (
+        stats["total_hashes"] == 0
+        and stats["peak_hash_rate"] == 0.0
+        and stats["shares_submitted"] == 0
+        and os.path.exists(DEFAULT_STATS_FILE)
+    ):
+        try:
+            with open(DEFAULT_STATS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Ensure all required keys exist
-                stats = {
-                    "total_hashes": data.get("total_hashes", 0),
-                    "peak_hash_rate": data.get("peak_hash_rate", 0.0),
-                    "shares_submitted": data.get("shares_submitted", 0),
-                    "shares_accepted": data.get("shares_accepted", 0),
-                    "shares_rejected": data.get("shares_rejected", 0),
-                    "last_updated": data.get("last_updated")
-                }
-                return stats
-    except (json.JSONDecodeError, IOError, OSError) as e:
-        # If file is corrupted or can't be read, return defaults
-        import logging
-        logger = logging.getLogger("SatoshiRig.stats")
-        logger.warning(f"Failed to load statistics from {stats_file}: {e}. Using defaults.")
-        return {
-            "total_hashes": 0,
-            "peak_hash_rate": 0.0,
-            "shares_submitted": 0,
-            "shares_accepted": 0,
-            "shares_rejected": 0,
-            "last_updated": None
-        }
+            stats["total_hashes"] = float(data.get("total_hashes", 0))
+            stats["peak_hash_rate"] = float(data.get("peak_hash_rate", 0.0))
+            stats["shares_submitted"] = int(data.get("shares_submitted", 0))
+            stats["shares_accepted"] = int(data.get("shares_accepted", 0))
+            stats["shares_rejected"] = int(data.get("shares_rejected", 0))
+            stats["last_updated"] = data.get("last_updated")
+            # Persist migrated data to DB
+            save_statistics(
+                stats["total_hashes"],
+                stats["peak_hash_rate"],
+                stats["shares_submitted"],
+                stats["shares_accepted"],
+                stats["shares_rejected"],
+            )
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+
+    return stats
 
 
 def save_statistics(
-    total_hashes: int,
+    total_hashes: float,
     peak_hash_rate: float,
     shares_submitted: int,
     shares_accepted: int,
     shares_rejected: int
 ):
     """Save statistics to persistent storage."""
-    stats_file = os.environ.get("STATS_FILE", DEFAULT_STATS_FILE)
-    ensure_data_dir()
-    
-    stats = {
-        "total_hashes": total_hashes,
-        "peak_hash_rate": peak_hash_rate,
-        "shares_submitted": shares_submitted,
-        "shares_accepted": shares_accepted,
-        "shares_rejected": shares_rejected,
-        "last_updated": datetime.now().isoformat()
-    }
-    
-    try:
-        with FILE_LOCK:
-            # Write to temporary file first, then rename (atomic operation)
-            temp_file = stats_file + ".tmp"
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(stats, f, indent=2)
-            
-            # Atomic rename
-            if os.path.exists(temp_file):
-                if os.path.exists(stats_file):
-                    os.replace(temp_file, stats_file)
-                else:
-                    os.rename(temp_file, stats_file)
-    except (IOError, OSError) as e:
-        import logging
-        logger = logging.getLogger("SatoshiRig.stats")
-        logger.error(f"Failed to save statistics to {stats_file}: {e}")
+    set_value("stats", "total_hashes", str(total_hashes))
+    set_value("stats", "peak_hash_rate", str(peak_hash_rate))
+    set_value("stats", "shares_submitted", str(shares_submitted))
+    set_value("stats", "shares_accepted", str(shares_accepted))
+    set_value("stats", "shares_rejected", str(shares_rejected))
+    set_value("stats", "last_updated", datetime.utcnow().isoformat())
 
 
 def merge_statistics(
@@ -126,10 +95,10 @@ def merge_statistics(
     merged_shares_submitted = existing_shares_submitted + new_shares_submitted
     merged_shares_accepted = existing_shares_accepted + new_shares_accepted
     merged_shares_rejected = existing_shares_rejected + new_shares_rejected
-    
+
     # For peak hash rate, take the maximum
     merged_peak_hash_rate = max(existing_peak_hash_rate, new_peak_hash_rate)
-    
+
     return {
         "total_hashes": merged_total_hashes,
         "peak_hash_rate": merged_peak_hash_rate,

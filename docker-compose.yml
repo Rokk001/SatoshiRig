@@ -11,8 +11,6 @@ services:
     environment:
       # OPTIONAL: config path inside container
       - CONFIG_FILE=/app/config/config.toml
-      # OPTIONAL: statistics file path (default: /app/data/statistics.json)
-      - STATS_FILE=/app/data/statistics.json
       # Compute backend: cpu | cuda | opencl
       - COMPUTE_BACKEND=${COMPUTE_BACKEND:-cpu}
       # GPU index for CUDA/OpenCL backends

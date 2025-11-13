@@ -15,6 +15,7 @@ from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
 from ..utils.formatting import format_hash_number, format_time_to_block
+from ..config import persist_config_to_db
 
 # Try to import GPU monitoring libraries
 try:
@@ -1141,6 +1142,7 @@ def set_config(config: dict):
         },
     }
     _config = sanitized
+    persist_config_to_db(sanitized)
 
 
 def get_config_for_ui() -> dict:

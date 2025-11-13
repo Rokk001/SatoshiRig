@@ -3,6 +3,8 @@ import tomllib
 import tomli_w
 from typing import Any, Dict
 
+from .db import get_value, set_value
+
 
 DEFAULT_CONFIG_PATHS = [
     os.environ.get("CONFIG_FILE") ,
@@ -16,6 +18,112 @@ def _first_existing_path(paths) :
         if p and os.path.isfile(os.path.abspath(p)) :
             return os.path.abspath(p)
     return None
+
+
+def _bool_from_str(value: str, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _apply_db_overrides(cfg: Dict[str, Any]) -> None:
+    # Wallet
+    wallet_addr = get_value("settings", "wallet_address")
+    if wallet_addr is not None:
+        cfg.setdefault("wallet", {})["address"] = wallet_addr
+
+    # Pool
+    pool_cfg = cfg.setdefault("pool", {})
+    host = get_value("pool", "host")
+    if host is not None:
+        pool_cfg["host"] = host
+    port = get_value("pool", "port")
+    if port is not None:
+        try:
+            pool_cfg["port"] = int(port)
+        except ValueError:
+            pass
+
+    # Network
+    net_cfg = cfg.setdefault("network", {})
+    for key in ("source", "latest_block_url", "rpc_url", "rpc_user", "rpc_password"):
+        db_val = get_value("network", key)
+        if db_val is not None:
+            net_cfg[key] = db_val
+    timeout_val = get_value("network", "request_timeout_secs")
+    if timeout_val is not None:
+        try:
+            net_cfg["request_timeout_secs"] = int(timeout_val)
+        except ValueError:
+            pass
+
+    # Compute
+    comp_cfg = cfg.setdefault("compute", {})
+    backend_val = get_value("compute", "backend")
+    if backend_val is not None:
+        comp_cfg["backend"] = backend_val
+    for key in ("gpu_device", "batch_size", "max_workers", "gpu_utilization_percent"):
+        db_val = get_value("compute", key)
+        if db_val is not None:
+            try:
+                comp_cfg[key] = int(db_val)
+            except ValueError:
+                comp_cfg[key] = db_val
+    cpu_enabled = get_value("compute", "cpu_mining_enabled")
+    if cpu_enabled is not None:
+        comp_cfg["cpu_mining_enabled"] = _bool_from_str(cpu_enabled, True)
+    gpu_enabled = get_value("compute", "gpu_mining_enabled")
+    if gpu_enabled is not None:
+        comp_cfg["gpu_mining_enabled"] = _bool_from_str(gpu_enabled, False)
+
+    # Database retention
+    db_cfg = cfg.setdefault("database", {})
+    retention = get_value("database", "retention_days")
+    if retention is not None:
+        try:
+            db_cfg["retention_days"] = int(retention)
+        except ValueError:
+            pass
+
+
+def persist_config_to_db(cfg: Dict[str, Any]) -> None:
+    # Wallet
+    set_value("settings", "wallet_address", cfg.get("wallet", {}).get("address", ""))
+
+    # Pool
+    pool_cfg = cfg.get("pool", {})
+    set_value("pool", "host", str(pool_cfg.get("host", "")))
+    set_value("pool", "port", str(pool_cfg.get("port", 0)))
+
+    # Network
+    net_cfg = cfg.get("network", {})
+    for key in ("source", "latest_block_url", "rpc_url", "rpc_user", "rpc_password"):
+        set_value("network", key, str(net_cfg.get(key, "")))
+    set_value(
+        "network",
+        "request_timeout_secs",
+        str(net_cfg.get("request_timeout_secs", 15)),
+    )
+
+    # Compute
+    comp_cfg = cfg.get("compute", {})
+    set_value("compute", "backend", str(comp_cfg.get("backend", "cuda")))
+    for key in ("gpu_device", "batch_size", "max_workers", "gpu_utilization_percent"):
+        set_value("compute", key, str(comp_cfg.get(key, 0)))
+    set_value(
+        "compute",
+        "cpu_mining_enabled",
+        "1" if comp_cfg.get("cpu_mining_enabled", True) else "0",
+    )
+    set_value(
+        "compute",
+        "gpu_mining_enabled",
+        "1" if comp_cfg.get("gpu_mining_enabled", False) else "0",
+    )
+
+    # Database retention
+    db_cfg = cfg.get("database", {})
+    set_value("database", "retention_days", str(db_cfg.get("retention_days", 30)))
 
 
 def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -87,8 +195,7 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 def load_config() :
     cfg_path = _first_existing_path(DEFAULT_CONFIG_PATHS)
     if not cfg_path :
-        return {
-            "wallet": {"address": ""},
+        cfg = {
             "pool": {"host": "solo.ckpool.org" , "port": 3333} ,
             "network": {
                 "source": os.environ.get("BLOCK_SOURCE" , "web") ,  # web | local
@@ -106,6 +213,8 @@ def load_config() :
             } ,
             "compute": {"backend": os.environ.get("COMPUTE_BACKEND" , "cpu") , "gpu_device": int(os.environ.get("GPU_DEVICE" , "0"))}
         }
+        _apply_db_overrides(cfg)
+        return _validate_config(cfg)
     with open(cfg_path , "rb") as f :
         cfg = tomllib.load(f)
     compute = cfg.get("compute" , {})
@@ -114,6 +223,7 @@ def load_config() :
     if "gpu_device" not in compute :
         compute["gpu_device"] = int(os.environ.get("GPU_DEVICE" , "0"))
     cfg["compute"] = compute
+    _apply_db_overrides(cfg)
     return _validate_config(cfg)
 
 
@@ -142,6 +252,8 @@ def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
     
     # Validate config before saving
     validated_cfg = _validate_config(cfg.copy())
+
+    persist_config_to_db(validated_cfg)
     
     # Write to file with error handling for filesystem errors
     try:

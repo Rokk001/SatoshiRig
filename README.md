@@ -87,6 +87,7 @@ docker run -d \
   --name satoshirig \
   --restart unless-stopped \
   -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -158,7 +159,7 @@ All configuration can be done via environment variables:
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
 | `GPU_UTILIZATION_PERCENT` | No | `100` | GPU utilization percentage (1-100%) for time-slicing support |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
-| `STATS_FILE` | No | `/app/data/statistics.json` | Path to persistent statistics file |
+| `STATE_DB` | No | `./data/state.db` | Path to the SQLite database used for dynamic settings and statistics |
 | `CORS_ORIGINS` | No | `http://localhost:5000,http://127.0.0.1:5000` | Comma-separated list of allowed CORS origins, or `*` to allow all origins (less secure) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
@@ -166,6 +167,8 @@ All configuration can be done via environment variables:
 > **Note:** Set your wallet address via the web dashboard (Settings → Wallet Configuration) or by editing `config/config.toml` (`[wallet].address`). Environment variables are no longer required for the wallet.
 >
 > `compute.backend` represents the chosen GPU runtime (CUDA/OpenCL). CPU mining is controlled exclusively via the **CPU Mining Enabled** toggle in the web UI.
+>
+> Runtime settings (wallet address, pool configuration, compute toggles, statistics, etc.) are persisted in a lightweight SQLite database. By default this file lives at `data/state.db` (overridable via `STATE_DB`). Make sure the `data/` directory is writable or bind-mounted when running inside Docker.
 
 ### Configuration File (`config/config.toml`)
 
@@ -329,6 +332,8 @@ docker run -d \
   --gpus all \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -344,6 +349,8 @@ docker run -d \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -355,6 +362,8 @@ docker run -d \
   --gpus device=0 \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -369,6 +378,8 @@ docker run -d \
   --device=/dev/dri:/dev/dri \
   -e COMPUTE_BACKEND=opencl \
   -e GPU_DEVICE=0 \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```

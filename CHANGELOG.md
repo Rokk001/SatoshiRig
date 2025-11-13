@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.0] - 2025-11-13
+
+### Added
+- SQLite-backed state database (`data/state.db`, override via `STATE_DB`) storing wallet, pool/network/compute configuration, and mining statistics
+- Web UI and CLI now load defaults from the database when present; configuration updates and statistics are written back automatically
+- Legacy JSON statistics files are migrated transparently on first run
+
+### Changed
+- Removed usage of `STATS_FILE`; Docker examples mount the `data/` directory for persistent state
+- Documentation updated to reflect the new persistence layer
+
 ## [2.16.1] - 2025-11-13
 
 ### Fixed
@@ -72,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.17.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.0
 [2.16.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.1
 [2.16.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.0
 [2.15.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.15.0
