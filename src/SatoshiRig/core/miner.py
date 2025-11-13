@@ -299,14 +299,18 @@ class Miner:
         self._running = True
 
         try:
+            self.log.info("Connecting to pool %s:%s...", self.pool.host, self.pool.port)
             self.pool.connect()
+            self.log.info("Connected to pool, subscribing...")
             update_pool_status(True, self.pool.host, self.pool.port)
             sub_details, extranonce1, extranonce2_size = self.pool.subscribe()
             with self.state._lock:
                 self.state.subscription_details = sub_details
                 self.state.extranonce1 = extranonce1
                 self.state.extranonce2_size = extranonce2_size
+            self.log.info("Subscribed to pool, authorizing...")
             self.pool.authorize(self.wallet)
+            self.log.info("Authorized, waiting for mining notification...")
             responses = self.pool.read_notify()
             if not responses or len(responses) == 0:
                 raise RuntimeError("No mining notification received from pool")
@@ -328,12 +332,92 @@ class Miner:
                 ) = responses[0]["params"]
                 self.state.updated_prev_hash = self.state.prev_hash
             update_status("job_id", self.state.job_id)
+            self.log.info("Mining notification received, starting mining loop...")
             return self._mine_loop()
         except Exception as e:
+            self.log.error(f"Failed to start mining: {e}", exc_info=True)
             self._running = False
+            update_status("running", False)
+            update_pool_status(False)
             raise
 
     def _mine_loop(self):
+        """Main mining loop - wrapped in retry logic to handle transient errors"""
+        restart_delay = self.cfg.get("miner", {}).get("restart_delay_secs", 2)
+        max_retries = 10
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                return self._mine_loop_internal()
+            except (ConnectionError, RuntimeError, ValueError, KeyError, IndexError) as e:
+                retry_count += 1
+                error_msg = str(e).lower()
+                is_connection_error = (
+                    "connection" in error_msg or 
+                    "socket" in error_msg or
+                    "not connected" in error_msg
+                )
+                
+                if is_connection_error:
+                    self.log.warning(
+                        f"Pool connection error (attempt {retry_count}/{max_retries}): {e}. "
+                        f"Reconnecting in {restart_delay}s..."
+                    )
+                    # Try to reconnect
+                    try:
+                        if self.pool.sock:
+                            try:
+                                self.pool.close()
+                            except:
+                                pass
+                        self.pool.connect()
+                        update_pool_status(True, self.pool.host, self.pool.port)
+                        # Re-subscribe and re-authorize
+                        sub_details, extranonce1, extranonce2_size = self.pool.subscribe()
+                        with self.state._lock:
+                            self.state.subscription_details = sub_details
+                            self.state.extranonce1 = extranonce1
+                            self.state.extranonce2_size = extranonce2_size
+                        self.pool.authorize(self.wallet)
+                        self.log.info("Successfully reconnected to pool")
+                    except Exception as reconnect_error:
+                        self.log.error(f"Failed to reconnect to pool: {reconnect_error}")
+                        update_pool_status(False)
+                else:
+                    self.log.warning(
+                        f"Mining loop error (attempt {retry_count}/{max_retries}): {e}. "
+                        f"Retrying in {restart_delay}s..."
+                    )
+                
+                time.sleep(restart_delay)
+                # Check if we should continue
+                with self.state._lock:
+                    if self.state.shutdown_flag:
+                        self.log.info("Shutdown requested, stopping mining loop")
+                        update_status("running", False)
+                        update_pool_status(False)
+                        self._running = False
+                        return
+            except Exception as e:
+                self.log.error(f"Unexpected error in mining loop: {e}", exc_info=True)
+                retry_count += 1
+                if retry_count >= max_retries:
+                    self.log.error("Max retries reached, stopping mining loop")
+                    update_status("running", False)
+                    update_pool_status(False)
+                    self._running = False
+                    raise
+                time.sleep(restart_delay)
+        
+        # If we get here, all retries failed
+        self.log.error("Mining loop failed after all retries")
+        update_status("running", False)
+        update_pool_status(False)
+        self._running = False
+
+    def _mine_loop_internal(self):
+        """Internal mining loop implementation"""
         with self.state._lock:
             if self.state.height_to_best_difficulty.get(-1) == -1:
                 restart_delay = self.cfg.get("miner", {}).get("restart_delay_secs", 2)
@@ -346,7 +430,7 @@ class Miner:
             extranonce2_size = self.state.extranonce2_size
 
         if not nbits or len(nbits) < 2:
-            self.log.error(f"Invalid nbits: {nbits}")
+            self.log.error(f"Invalid nbits: {nbits}, waiting for valid data from pool...")
             raise RuntimeError(f"Invalid nbits value: {nbits}")
 
         try:
@@ -375,7 +459,7 @@ class Miner:
             update_status("target_difficulty", target_difficulty)
 
         if not extranonce2_size or extranonce2_size <= 0:
-            self.log.error(f"Invalid extranonce2_size: {extranonce2_size}")
+            self.log.error(f"Invalid extranonce2_size: {extranonce2_size}, waiting for valid data from pool...")
             raise RuntimeError(f"Invalid extranonce2_size: {extranonce2_size}")
 
         extranonce2 = hex(random.getrandbits(32))[2:].zfill(2 * extranonce2_size)
@@ -391,7 +475,7 @@ class Miner:
         # Validate required fields before building coinbase
         if not coinbase_part1 or not extranonce1 or not coinbase_part2:
             self.log.error(
-                f"Missing required coinbase fields: coinbase_part1={coinbase_part1 is not None}, extranonce1={extranonce1 is not None}, coinbase_part2={coinbase_part2 is not None}"
+                f"Missing required coinbase fields: coinbase_part1={coinbase_part1 is not None}, extranonce1={extranonce1 is not None}, coinbase_part2={coinbase_part2 is not None}. Waiting for pool notification..."
             )
             raise RuntimeError(
                 "Missing required coinbase fields. Pool may not have sent complete mining notification."
@@ -540,8 +624,10 @@ class Miner:
             # Initialize hash_hex to None (will be set by GPU or CPU mining)
             hash_hex = None
             nonce_hex = None
+            cpu_hash_hex = None
+            cpu_nonce_hex = None
 
-            # Use GPU miner if enabled and available, otherwise use CPU
+            # Use GPU miner if enabled and available
             if gpu_mining_enabled and self.gpu_miner:
                 # GPU mining: test multiple nonces in parallel batch
                 with self.state._lock:
@@ -593,66 +679,25 @@ class Miner:
                             if pause_time > 0:
                                 time.sleep(pause_time)
                     else:
-                        # GPU returned None - fallback to CPU for this iteration
-                        self.log.warning("GPU miner returned None, falling back to CPU")
-                        with self.state._lock:
-                            prev_hash = self.state.prev_hash
-                            ntime = self.state.ntime
-                            nbits = self.state.nbits
-                        nonce_hex = hex(self.gpu_nonce_counter)[2:].zfill(8)
-                        block_header = self._build_block_header(
-                            prev_hash, merkle_root, ntime, nbits, nonce_hex
-                        )
-                        try:
-                            block_header_bytes = binascii.unhexlify(block_header)
-                        except binascii.Error as e:
-                            self.log.error(
-                                f"Invalid block_header hex in GPU fallback: {block_header[:50]}... Error: {e}"
-                            )
-                            continue
-                        hash_hex = hashlib.sha256(
-                            hashlib.sha256(block_header_bytes).digest()
-                        ).digest()
-                        hash_hex = binascii.hexlify(hash_hex).decode()
-                        hash_count += 1
-                        self.total_hash_count += 1
-                        self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
-                        update_status("total_hashes", self.total_hash_count)
+                        # GPU returned None - CPU mining will handle it if enabled
+                        hash_hex = None
+                        nonce_hex = None
                 except Exception as e:
-                    # GPU error - fallback to CPU
-                    self.log.error(f"GPU mining error: {e}, falling back to CPU")
-                    with self.state._lock:
-                        prev_hash = self.state.prev_hash
-                        ntime = self.state.ntime
-                        nbits = self.state.nbits
-                    nonce_hex = hex(self.gpu_nonce_counter)[2:].zfill(8)
-                    block_header = self._build_block_header(
-                        prev_hash, merkle_root, ntime, nbits, nonce_hex
-                    )
-                    try:
-                        block_header_bytes = binascii.unhexlify(block_header)
-                    except binascii.Error as e:
-                        self.log.error(
-                            f"Invalid block_header hex in GPU exception fallback: {block_header[:50]}... Error: {e}"
-                        )
-                        continue
-                    hash_hex = hashlib.sha256(
-                        hashlib.sha256(block_header_bytes).digest()
-                    ).digest()
-                    hash_hex = binascii.hexlify(hash_hex).decode()
-                    hash_count += 1
-                    self.total_hash_count += 1
-                    self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
-                    update_status("total_hashes", self.total_hash_count)
-            elif cpu_mining_enabled:
+                    # GPU error - CPU mining will handle it if enabled
+                    self.log.error(f"GPU mining error: {e}, CPU mining will continue if enabled")
+                    hash_hex = None
+                    nonce_hex = None
+
+            # CPU mining (runs independently if enabled, regardless of GPU status)
+            if cpu_mining_enabled:
                 # CPU mining (original implementation)
                 with self.state._lock:
                     prev_hash = self.state.prev_hash
                     ntime = self.state.ntime
                     nbits = self.state.nbits
-                nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
+                cpu_nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
                 block_header = self._build_block_header(
-                    prev_hash, merkle_root, ntime, nbits, nonce_hex
+                    prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
                 )
                 try:
                     block_header_bytes = binascii.unhexlify(block_header)
@@ -660,26 +705,45 @@ class Miner:
                     self.log.error(
                         f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}"
                     )
-                    continue
-                hash_hex = hashlib.sha256(
-                    hashlib.sha256(block_header_bytes).digest()
-                ).digest()
-                hash_hex = binascii.hexlify(hash_hex).decode()
-                hash_count += 1
-                self.total_hash_count += 1
-                update_status("total_hashes", self.total_hash_count)
-            else:
-                # Both CPU and GPU mining disabled - pause briefly
-                self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
-                time.sleep(0.1)
-                continue
+                    cpu_hash_hex = None
+                    cpu_nonce_hex = None
+                else:
+                    cpu_hash_hex = hashlib.sha256(
+                        hashlib.sha256(block_header_bytes).digest()
+                    ).digest()
+                    cpu_hash_hex = binascii.hexlify(cpu_hash_hex).decode()
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes", self.total_hash_count)
+                
+                # If GPU didn't produce a hash, use CPU hash
+                if hash_hex is None:
+                    hash_hex = cpu_hash_hex
+                    nonce_hex = cpu_nonce_hex
+                # If both produced hashes, use the better one (lower value = better)
+                elif cpu_hash_hex is not None:
+                    try:
+                        if int(cpu_hash_hex, 16) < int(hash_hex, 16):
+                            hash_hex = cpu_hash_hex
+                            nonce_hex = cpu_nonce_hex
+                    except ValueError:
+                        # If comparison fails, use GPU hash (or CPU if GPU is None)
+                        if hash_hex is None:
+                            hash_hex = cpu_hash_hex
+                            nonce_hex = cpu_nonce_hex
 
-            # Ensure hash_hex and nonce_hex are defined (should always be set by GPU or CPU mining above)
+            # Check if we have a valid hash
             if hash_hex is None or nonce_hex is None:
-                self.log.error(
-                    "hash_hex or nonce_hex not defined - this should not happen!"
-                )
-                continue
+                if not cpu_mining_enabled and not (gpu_mining_enabled and self.gpu_miner):
+                    # Both CPU and GPU mining disabled - pause briefly
+                    self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
+                    time.sleep(0.1)
+                    continue
+                else:
+                    self.log.error(
+                        "hash_hex or nonce_hex not defined - this should not happen!"
+                    )
+                    continue
 
             if hash_hex.startswith(prefix_zeros):
                 self.log.debug(

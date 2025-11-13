@@ -5,6 +5,14 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.3] - 2025-11-13
+
+### Fixed
+- CPU mining now works independently of GPU mining status
+- Changed `elif cpu_mining_enabled` to `if cpu_mining_enabled` to allow parallel CPU and GPU mining
+- When both CPU and GPU mining are enabled, both run in parallel and the better hash is used
+- Improved error handling in mining loop with better logging for debugging
+
 ## [2.17.2] - 2025-11-13
 
 ### Changed
@@ -101,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.17.3]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.3
 [2.17.2]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.2
 [2.17.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.1
 [2.17.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.0

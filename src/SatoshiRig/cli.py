@@ -139,7 +139,24 @@ def main() :
         atexit.register(save_statistics_now)
 
     try:
+        logger.info("Starting miner...")
         miner.start()
+    except Exception as e:
+        logger.error(f"Failed to start miner: {e}", exc_info=True)
+        if WEB_AVAILABLE and not args.no_web:
+            from .web.server import update_status, update_pool_status
+            update_status("running", False)
+            update_pool_status(False)
+        # If web server is running, keep it alive so user can fix the issue
+        if WEB_AVAILABLE and not args.no_web:
+            logger.warning("Miner failed to start, but web dashboard is still available for configuration.")
+            try:
+                while True:
+                    time.sleep(5)
+            except KeyboardInterrupt:
+                pass
+        else:
+            raise  # Re-raise if no web server
     finally:
         # Cleanup: Close pool connection
         try:
