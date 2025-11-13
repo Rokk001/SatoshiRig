@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.0] - 2025-11-13
+
+### Changed
+- GPU backend dropdown now strictly controls the GPU runtime (CUDA/OpenCL); CPU mining is governed solely by the CPU toggle
+- Web UI remembers the preferred GPU backend and reapplies it automatically when GPU mining is re-enabled
+- Configuration persistence now retains the previous GPU backend even when GPU mining is disabled
+
+### Fixed
+- CPU mining toggle now correctly persists its state instead of being forced back to enabled
+- Prevented the UI from displaying `cpu` as backend and clarified that backend selection applies only to GPU mining
+
 ## [2.14.0] - 2024-12-XX
 
 ### Added
@@ -45,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.15.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.15.0
 [2.14.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.14.0
 [2.13.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.13.0
 

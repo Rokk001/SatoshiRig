@@ -19,12 +19,14 @@ from ..utils.formatting import format_hash_number, format_time_to_block
 # Try to import GPU monitoring libraries
 try:
     import pynvml
+
     PYNVML_AVAILABLE = True
 except ImportError:
     PYNVML_AVAILABLE = False
 
 try:
     import pyopencl
+
     OPENCL_AVAILABLE = True
 except ImportError:
     OPENCL_AVAILABLE = False
@@ -32,6 +34,7 @@ except ImportError:
 # Check CUDA availability
 try:
     import pycuda.driver as cuda
+
     CUDA_AVAILABLE = True
 except ImportError:
     CUDA_AVAILABLE = False
@@ -41,8 +44,14 @@ except Exception:
 
 # Import status management from separate module
 from .status import (
-    STATUS, STATUS_LOCK, STATS, STATS_LOCK,
-    update_status, get_status, add_share, update_pool_status
+    STATUS,
+    STATUS_LOCK,
+    STATS,
+    STATS_LOCK,
+    update_status,
+    get_status,
+    add_share,
+    update_pool_status,
 )
 
 
@@ -52,19 +61,19 @@ def update_performance_metrics():
     try:
         # CPU Usage
         cpu_percent = psutil.cpu_percent(interval=0.1)
-        
+
         # Memory Usage
         memory = psutil.virtual_memory()
         memory_percent = memory.percent
-        
+
         # GPU Monitoring (NVIDIA)
         gpu_usage = 0.0
         gpu_temperature = 0.0
         gpu_memory = 0.0
-        
+
         if PYNVML_AVAILABLE:
             try:
-                if not hasattr(update_performance_metrics, 'nvml_initialized'):
+                if not hasattr(update_performance_metrics, "nvml_initialized"):
                     try:
                         pynvml.nvmlInit()
                         update_performance_metrics.nvml_initialized = True
@@ -72,7 +81,7 @@ def update_performance_metrics():
                     except pynvml.NVMLError as e:
                         logging.warning(f"NVML initialization failed: {e}")
                         update_performance_metrics.nvml_initialized = False
-                
+
                 if update_performance_metrics.nvml_initialized:
                     try:
                         device_count = pynvml.nvmlDeviceGetCount()
@@ -82,10 +91,12 @@ def update_performance_metrics():
                             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                             gpu_usage = util.gpu
-                            
-                            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+
+                            temp = pynvml.nvmlDeviceGetTemperature(
+                                handle, pynvml.NVML_TEMPERATURE_GPU
+                            )
                             gpu_temperature = temp
-                            
+
                             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                             # Prevent division by zero
                             if mem_info.total > 0:
@@ -96,7 +107,7 @@ def update_performance_metrics():
                         logging.debug(f"GPU monitoring error: {e}")
             except Exception as e:
                 logging.debug(f"Unexpected GPU monitoring error: {e}")
-        
+
         # Update STATUS with lock protection
         with STATUS_LOCK:
             STATUS["cpu_usage"] = cpu_percent
@@ -127,13 +138,13 @@ def calculate_mining_intelligence():
         best_difficulty = STATUS.get("best_difficulty", 0)
         target_difficulty = STATUS.get("target_difficulty", 0)
         network_difficulty = STATUS.get("network_difficulty", 0)
-        
+
         if not hash_rate or hash_rate <= 0:
             STATUS["estimated_time_to_block"] = None
             STATUS["block_found_probability"] = 0.0
             STATUS["estimated_profitability"] = 0.0
             return
-        
+
         # Calculate target difficulty from nbits (simplified)
         # For Bitcoin, difficulty = 65535 * 256^(exponent-3) / mantissa
         if target_difficulty > 0:
@@ -146,33 +157,36 @@ def calculate_mining_intelligence():
         else:
             # Default Bitcoin network difficulty (approximate)
             difficulty = 50_000_000_000  # ~50 trillion
-        
+
         # Estimated time to block (in seconds)
         # Expected hashes = 2^32 * difficulty
-        expected_hashes = (2 ** 32) * difficulty
+        expected_hashes = (2**32) * difficulty
         if hash_rate > 0:
             estimated_seconds = expected_hashes / hash_rate
             STATUS["estimated_time_to_block"] = estimated_seconds
-            
+
             # Convert to human-readable format (years, months, days)
-            STATUS["estimated_time_to_block_formatted"] = format_time_to_block(estimated_seconds)
-            
+            STATUS["estimated_time_to_block_formatted"] = format_time_to_block(
+                estimated_seconds
+            )
+
             # Block found probability (simplified - probability of finding block in next hour)
             # P = 1 - e^(-hash_rate * 3600 / expected_hashes)
             import math
+
             if expected_hashes > 0:
                 prob = 1 - math.exp(-(hash_rate * 3600) / expected_hashes)
                 STATUS["block_found_probability"] = prob * 100
             else:
                 STATUS["block_found_probability"] = 0.0
-            
+
             # Estimated profitability (BTC per day) - very simplified
             # Assumes block reward = 3.125 BTC (current halving)
             block_reward = 3.125
             blocks_per_day = (86400 / estimated_seconds) if estimated_seconds > 0 else 0
             btc_per_day = blocks_per_day * block_reward
             STATUS["estimated_profitability"] = btc_per_day
-            
+
             # Difficulty trend analysis
             if len(STATUS["difficulty_history"]) >= 2:
                 recent = list(STATUS["difficulty_history"])[-5:]
@@ -212,13 +226,18 @@ def performance_monitor_thread():
 # Start performance monitoring thread
 _performance_thread = None
 _performance_running = False
+
+
 def start_performance_monitoring():
     """Start the performance monitoring background thread"""
     global _performance_thread, _performance_running
     if _performance_thread is None or not _performance_thread.is_alive():
         _performance_running = True
-        _performance_thread = threading.Thread(target=performance_monitor_thread, daemon=True)
+        _performance_thread = threading.Thread(
+            target=performance_monitor_thread, daemon=True
+        )
         _performance_thread.start()
+
 
 def stop_performance_monitoring():
     """Stop the performance monitoring background thread"""
@@ -230,14 +249,16 @@ app = Flask(__name__, static_url_path="/static")
 # Use environment variable for SECRET_KEY or generate a random one
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 # CORS: Allow specific origins or localhost by default for security
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
+cors_origins = os.environ.get(
+    "CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000"
+).split(",")
 socketio = SocketIO(app, cors_allowed_origins=cors_origins)
 
 
 @app.route("/favicon.ico")
 def favicon():
     """Serve favicon as SVG"""
-    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    svg_content = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <defs>
 <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
 <stop offset="0%" style="stop-color:#1e3c72;stop-opacity:1" />
@@ -252,11 +273,11 @@ def favicon():
 <circle cx="50" cy="50" r="35" fill="url(#btc)" stroke="#fff" stroke-width="2"/>
 <path d="M50 30 L58 42 L50 50 L42 42 Z M50 50 L58 62 L50 70 L42 62 Z" fill="#1a1a1a"/>
 <circle cx="50" cy="50" r="6" fill="#F7931A"/>
-</svg>'''
+</svg>"""
     return Response(
         svg_content,
         mimetype="image/svg+xml",
-        headers={"Cache-Control": "public, max-age=31536000"}
+        headers={"Cache-Control": "public, max-age=31536000"},
     )
 
 
@@ -278,7 +299,7 @@ def export_stats():
     return Response(
         json.dumps(stats, indent=2),
         mimetype="application/json",
-        headers={"Content-Disposition": "attachment; filename=satoshirig-stats.json"}
+        headers={"Content-Disposition": "attachment; filename=satoshirig-stats.json"},
     )
 
 
@@ -286,96 +307,132 @@ def export_stats():
 def stop_mining():
     """Stop mining by setting shutdown flag"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
-        return jsonify({
-            "success": False,
-            "error": "CSRF validation failed",
-            "message": "Request origin not allowed. CSRF protection enabled."
-        }), 403
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "CSRF validation failed",
+                    "message": "Request origin not allowed. CSRF protection enabled.",
+                }
+            ),
+            403,
+        )
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
-        return jsonify({
-            "success": False,
-            "error": "Rate limit exceeded",
-            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
-        }), 429
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Rate limit exceeded",
+                    "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds.",
+                }
+            ),
+            429,
+        )
+
     try:
         global _miner_state
         if not _miner_state:
-            return jsonify({
-                "success": False,
-                "error": "MinerStateNotAvailable",
-                "message": "Miner state not available. Miner may not be running."
-            }), 503
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "MinerStateNotAvailable",
+                        "message": "Miner state not available. Miner may not be running.",
+                    }
+                ),
+                503,
+            )
+
         # Thread-safe shutdown flag update
         with _miner_state._lock:
             _miner_state.shutdown_flag = True
         update_status("running", False)
-        return jsonify({
-            "success": True,
-            "message": "Mining stopped"
-        })
+        return jsonify({"success": True, "message": "Mining stopped"})
     except Exception as e:
         logging.error(f"Error stopping mining: {e}")
-        return jsonify({
-            "success": False,
-            "error": "InternalError",
-            "message": f"Failed to stop mining: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "InternalError",
+                    "message": f"Failed to stop mining: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/start", methods=["POST"])
 def start_mining():
     """Resume mining by clearing shutdown flag (Note: Requires miner restart to actually resume)"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
-        return jsonify({
-            "success": False,
-            "error": "CSRF validation failed",
-            "message": "Request origin not allowed. CSRF protection enabled."
-        }), 403
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "CSRF validation failed",
+                    "message": "Request origin not allowed. CSRF protection enabled.",
+                }
+            ),
+            403,
+        )
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
-        return jsonify({
-            "success": False,
-            "error": "Rate limit exceeded",
-            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
-        }), 429
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Rate limit exceeded",
+                    "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds.",
+                }
+            ),
+            429,
+        )
+
     try:
         global _miner_state
         if not _miner_state:
-            return jsonify({
-                "success": False,
-                "error": "MinerStateNotAvailable",
-                "message": "Miner state not available. Miner may not be running."
-            }), 503
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "MinerStateNotAvailable",
+                        "message": "Miner state not available. Miner may not be running.",
+                    }
+                ),
+                503,
+            )
+
         # Thread-safe shutdown flag update
         with _miner_state._lock:
             _miner_state.shutdown_flag = False
         update_status("running", True)
-        return jsonify({
-            "success": True,
-            "message": "Mining resumed (may require restart)"
-        })
+        return jsonify(
+            {"success": True, "message": "Mining resumed (may require restart)"}
+        )
     except Exception as e:
         logging.error(f"Error starting mining: {e}")
-        return jsonify({
-            "success": False,
-            "error": "InternalError",
-            "message": f"Failed to start mining: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "InternalError",
+                    "message": f"Failed to start mining: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/config", methods=["GET"])
@@ -383,63 +440,80 @@ def get_config_api():
     """Get current configuration (sanitized)"""
     try:
         config = get_config_for_ui()
-        return jsonify({
-            "success": True,
-            "config": config
-        }), 200
+        return jsonify({"success": True, "config": config}), 200
     except Exception as e:
         logger = logging.getLogger("SatoshiRig.web")
         logger.error(f"Error getting config: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/config", methods=["POST"])
 def save_config_api():
     """Save configuration (validates and stores)"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
-        return jsonify({
-            "success": False,
-            "error": "CSRF validation failed",
-            "message": "Request origin not allowed. CSRF protection enabled."
-        }), 403
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "CSRF validation failed",
+                    "message": "Request origin not allowed. CSRF protection enabled.",
+                }
+            ),
+            403,
+        )
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
-        return jsonify({
-            "success": False,
-            "error": "Rate limit exceeded",
-            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
-        }), 429
-    
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Rate limit exceeded",
+                    "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds.",
+                }
+            ),
+            429,
+        )
+
     try:
         data = request.get_json()
         if not data or "config" not in data:
-            return jsonify({
-                "success": False,
-                "error": "Invalid request: missing 'config' field"
-            }), 400
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Invalid request: missing 'config' field",
+                    }
+                ),
+                400,
+            )
+
         config = data["config"]
-        
+
         # Validate configuration
         validation_errors = []
-        
+
         # Validate wallet address
         if "wallet" in config and "address" in config["wallet"]:
             wallet_address = config["wallet"]["address"].strip()
             if wallet_address:
                 if len(wallet_address) < 26 or len(wallet_address) > 62:
-                    validation_errors.append("Invalid wallet address length (must be 26-62 characters)")
-                if not all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for c in wallet_address):
-                    validation_errors.append("Invalid wallet address format (contains invalid characters)")
-        
+                    validation_errors.append(
+                        "Invalid wallet address length (must be 26-62 characters)"
+                    )
+                if not all(
+                    c
+                    in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                    for c in wallet_address
+                ):
+                    validation_errors.append(
+                        "Invalid wallet address format (contains invalid characters)"
+                    )
+
         # Validate pool configuration
         if "pool" in config:
             if "host" in config["pool"]:
@@ -450,10 +524,12 @@ def save_config_api():
                 try:
                     port = int(config["pool"]["port"])
                     if port < 1 or port > 65535:
-                        validation_errors.append("Pool port must be between 1 and 65535")
+                        validation_errors.append(
+                            "Pool port must be between 1 and 65535"
+                        )
                 except (ValueError, TypeError):
                     validation_errors.append("Pool port must be a valid number")
-        
+
         # Validate network configuration
         if "network" in config:
             if "source" in config["network"]:
@@ -464,16 +540,20 @@ def save_config_api():
                 try:
                     timeout = int(config["network"]["request_timeout_secs"])
                     if timeout < 1 or timeout > 300:
-                        validation_errors.append("Request timeout must be between 1 and 300 seconds")
+                        validation_errors.append(
+                            "Request timeout must be between 1 and 300 seconds"
+                        )
                 except (ValueError, TypeError):
                     validation_errors.append("Request timeout must be a valid number")
-        
+
         # Validate compute configuration
         if "compute" in config:
             if "backend" in config["compute"]:
                 backend = config["compute"]["backend"]
                 if backend not in ["cpu", "cuda", "opencl"]:
-                    validation_errors.append("Compute backend must be 'cpu', 'cuda', or 'opencl'")
+                    validation_errors.append(
+                        "Compute backend must be 'cpu', 'cuda', or 'opencl'"
+                    )
             if "gpu_device" in config["compute"]:
                 try:
                     gpu_device = int(config["compute"]["gpu_device"])
@@ -485,119 +565,149 @@ def save_config_api():
                 try:
                     batch_size = int(config["compute"]["batch_size"])
                     if batch_size < 1 or batch_size > 100000:
-                        validation_errors.append("Batch size must be between 1 and 100000")
+                        validation_errors.append(
+                            "Batch size must be between 1 and 100000"
+                        )
                 except (ValueError, TypeError):
                     validation_errors.append("Batch size must be a valid number")
             if "max_workers" in config["compute"]:
                 try:
                     max_workers = int(config["compute"]["max_workers"])
                     if max_workers < 1 or max_workers > 128:
-                        validation_errors.append("Max workers must be between 1 and 128")
+                        validation_errors.append(
+                            "Max workers must be between 1 and 128"
+                        )
                 except (ValueError, TypeError):
                     validation_errors.append("Max workers must be a valid number")
             if "gpu_utilization_percent" in config["compute"]:
                 try:
                     gpu_util = int(config["compute"]["gpu_utilization_percent"])
                     if gpu_util < 1 or gpu_util > 100:
-                        validation_errors.append("GPU utilization must be between 1 and 100 percent")
+                        validation_errors.append(
+                            "GPU utilization must be between 1 and 100 percent"
+                        )
                 except (ValueError, TypeError):
                     validation_errors.append("GPU utilization must be a valid number")
-        
+
         # Validate database configuration
         if "database" in config and "retention_days" in config["database"]:
             try:
                 retention = int(config["database"]["retention_days"])
                 if retention < 1 or retention > 3650:
-                    validation_errors.append("Database retention must be between 1 and 3650 days")
+                    validation_errors.append(
+                        "Database retention must be between 1 and 3650 days"
+                    )
             except (ValueError, TypeError):
                 validation_errors.append("Database retention must be a valid number")
-        
+
         if validation_errors:
-            return jsonify({
-                "success": False,
-                "error": "Validation failed",
-                "errors": validation_errors
-            }), 400
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Validation failed",
+                        "errors": validation_errors,
+                    }
+                ),
+                400,
+            )
+
         # Save to config file
         try:
             from ..config import save_config as save_config_file, load_config
+
             # Load original config from file to preserve sensitive data (not sanitized UI config)
             try:
                 existing_config = load_config()
             except Exception:
                 # If loading fails, use sanitized config as fallback
                 existing_config = get_config_for_ui()
-            
+
             # Deep merge: update existing config with new values (with deep copy to avoid reference issues)
             # Add recursion depth limit to prevent stack overflow
             import copy
+
             def deep_merge(base, update, depth=0, max_depth=50):
                 if depth > max_depth:
-                    raise RuntimeError(f"deep_merge recursion depth exceeded {max_depth}, possible circular reference")
+                    raise RuntimeError(
+                        f"deep_merge recursion depth exceeded {max_depth}, possible circular reference"
+                    )
                 for key, value in update.items():
-                    if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                    if (
+                        key in base
+                        and isinstance(base[key], dict)
+                        and isinstance(value, dict)
+                    ):
                         deep_merge(base[key], value, depth + 1, max_depth)
                     else:
                         # Deep copy to avoid reference issues
-                        base[key] = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
-            
+                        base[key] = (
+                            copy.deepcopy(value)
+                            if isinstance(value, (dict, list))
+                            else value
+                        )
+
             # Create full config for saving (merge with existing to preserve sensitive data)
             full_config = existing_config.copy()
             deep_merge(full_config, config)
-            
+
             # Get config file path from environment or use default
             config_path = os.environ.get("CONFIG_FILE")
             if not config_path:
                 config_path = os.path.join(os.getcwd(), "config", "config.toml")
-            
+
             # Save to file
             saved_path = save_config_file(full_config, config_path)
             logger = logging.getLogger("SatoshiRig.web")
             logger.info(f"Configuration saved to {saved_path}")
+
+            # Reload config from file to get the saved wallet address
+            try:
+                saved_config = load_config()
+                # Update in-memory config with saved config (preserves wallet address)
+                set_config(saved_config)
+            except Exception as e:
+                logger.warning(f"Could not reload config after save: {e}")
+                # Fallback: update with the config we just saved (includes wallet)
+                set_config(full_config)
         except Exception as e:
             logger = logging.getLogger("SatoshiRig.web")
             logger.error(f"Error saving config to file: {e}")
-            # Continue anyway - at least update in-memory config
-        
-        # Update in-memory config
-        set_config(config)
-        
-        return jsonify({
-            "success": True,
-            "message": "Configuration saved successfully"
-        }), 200
+            # Continue anyway - at least update in-memory config with the config that was sent (includes wallet)
+            set_config(config)
+
+        return (
+            jsonify({"success": True, "message": "Configuration saved successfully"}),
+            200,
+        )
     except Exception as e:
         logger = logging.getLogger("SatoshiRig.web")
         logger.error(f"Error saving config: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/config/cpu-mining", methods=["POST"])
 def toggle_cpu_mining():
     """Toggle CPU mining on/off"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
         return jsonify({"success": False, "error": "CSRF validation failed"}), 403
-    
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
         return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
-    
+
     try:
         data = request.get_json()
         enabled = data.get("enabled", True)
-        
+
         config = get_config_for_ui()
         config["compute"]["cpu_mining_enabled"] = enabled
         set_config(config)
-        
+
         # Apply to running miner
         global _miner
         if _miner:
@@ -606,15 +716,17 @@ def toggle_cpu_mining():
             except Exception as e:
                 logger = logging.getLogger("SatoshiRig.web")
                 logger.error(f"Error updating miner config: {e}")
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to apply config to miner: {str(e)}"
-                }), 500
-        
-        return jsonify({
-            "success": True,
-            "cpu_mining_enabled": enabled
-        }), 200
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": f"Failed to apply config to miner: {str(e)}",
+                        }
+                    ),
+                    500,
+                )
+
+        return jsonify({"success": True, "cpu_mining_enabled": enabled}), 200
     except Exception as e:
         logger = logging.getLogger("SatoshiRig.web")
         logger.error(f"Error toggling CPU mining: {e}")
@@ -625,41 +737,49 @@ def toggle_cpu_mining():
 def toggle_gpu_mining():
     """Toggle GPU mining on/off"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
         return jsonify({"success": False, "error": "CSRF validation failed"}), 403
-    
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
         return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
-    
+
     try:
         data = request.get_json()
         enabled = data.get("enabled", True)
-        
+
         config = get_config_for_ui()
         config["compute"]["gpu_mining_enabled"] = enabled
-        
+
         # Update backend based on GPU availability
         if enabled:
-            # Check available GPU backends
-            if CUDA_AVAILABLE:
+            current_backend = config["compute"].get("backend")
+            if current_backend == "cuda" and not CUDA_AVAILABLE:
+                current_backend = None
+            if current_backend == "opencl" and not OPENCL_AVAILABLE:
+                current_backend = None
+
+            if current_backend in ("cuda", "opencl"):
+                config["compute"]["backend"] = current_backend
+            elif CUDA_AVAILABLE:
                 config["compute"]["backend"] = "cuda"
             elif OPENCL_AVAILABLE:
                 config["compute"]["backend"] = "opencl"
             else:
-                return jsonify({
-                    "success": False,
-                    "error": "No GPU backend available. Install PyCUDA or PyOpenCL."
-                }), 400
-        else:
-            # Disable GPU mining - switch to CPU
-            config["compute"]["backend"] = "cpu"
-        
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No GPU backend available. Install PyCUDA or PyOpenCL.",
+                        }
+                    ),
+                    400,
+                )
         set_config(config)
-        
+
         # Apply to running miner
         global _miner
         if _miner:
@@ -668,16 +788,26 @@ def toggle_gpu_mining():
             except Exception as e:
                 logger = logging.getLogger("SatoshiRig.web")
                 logger.error(f"Error updating miner config: {e}")
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to apply config to miner: {str(e)}"
-                }), 500
-        
-        return jsonify({
-            "success": True,
-            "gpu_mining_enabled": enabled,
-            "backend": config["compute"]["backend"]
-        }), 200
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": f"Failed to apply config to miner: {str(e)}",
+                        }
+                    ),
+                    500,
+                )
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "gpu_mining_enabled": enabled,
+                    "backend": config["compute"]["backend"],
+                }
+            ),
+            200,
+        )
     except Exception as e:
         logger = logging.getLogger("SatoshiRig.web")
         logger.error(f"Error toggling GPU mining: {e}")
@@ -688,36 +818,38 @@ def toggle_gpu_mining():
 def set_db_retention():
     """Set database retention period in days"""
     from flask import request
-    
+
     # CSRF protection
     if not _check_csrf_protection(request):
         return jsonify({"success": False, "error": "CSRF validation failed"}), 403
-    
+
     # Rate limiting
     client_ip = request.remote_addr or "unknown"
     if not _check_rate_limit(client_ip):
         return jsonify({"success": False, "error": "Rate limit exceeded"}), 429
-    
+
     try:
         data = request.get_json()
         days = int(data.get("days", 30))
-        
+
         if days < 1 or days > 3650:  # Max 10 years
-            return jsonify({
-                "success": False,
-                "error": "Retention days must be between 1 and 3650"
-            }), 400
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Retention days must be between 1 and 3650",
+                    }
+                ),
+                400,
+            )
+
         config = get_config_for_ui()
         config["database"]["retention_days"] = days
         set_config(config)
-        
+
         # TODO: Save to database
-        
-        return jsonify({
-            "success": True,
-            "retention_days": days
-        }), 200
+
+        return jsonify({"success": True, "retention_days": days}), 200
     except (ValueError, TypeError) as e:
         return jsonify({"success": False, "error": "Invalid days value"}), 400
     except Exception as e:
@@ -738,6 +870,7 @@ def handle_get_status():
 
 # Global flag to control broadcast thread
 _broadcast_running = False
+
 
 def broadcast_status():
     global _broadcast_running
@@ -762,6 +895,7 @@ def stop_web_server():
     global _broadcast_running, _performance_running
     _broadcast_running = False
     stop_performance_monitoring()
+
 
 def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     logger = logging.getLogger("SatoshiRig.web")
@@ -801,17 +935,18 @@ def _check_rate_limit(client_ip: str) -> bool:
         now = time.time()
         if client_ip not in _api_rate_limit:
             _api_rate_limit[client_ip] = []
-        
+
         # Remove old requests outside the window
         _api_rate_limit[client_ip] = [
-            req_time for req_time in _api_rate_limit[client_ip]
+            req_time
+            for req_time in _api_rate_limit[client_ip]
             if now - req_time < _api_rate_limit_window
         ]
-        
+
         # Check if limit exceeded
         if len(_api_rate_limit[client_ip]) >= _api_rate_limit_max_requests:
             return False
-        
+
         # Add current request
         _api_rate_limit[client_ip].append(now)
         return True
@@ -820,80 +955,114 @@ def _check_rate_limit(client_ip: str) -> bool:
 def _check_csrf_protection(request) -> bool:
     """Check CSRF protection via Origin/Referer header validation"""
     # Get allowed origins from CORS configuration (use same as CORS settings)
-    cors_origins_str = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000")
-    
+    cors_origins_str = os.environ.get(
+        "CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000"
+    )
+
     # If CORS_ORIGINS is "*", allow all origins (less secure but convenient)
     if cors_origins_str.strip() == "*":
         return True
-    
+
     allowed_origins = cors_origins_str.split(",")
-    
+
     # Get current request host (same-origin requests should always be allowed)
     current_host = request.host  # e.g., "satoshirig.zhome.ch:5000" or "localhost:5000"
-    current_host_base = current_host.split(':')[0]  # Remove port if present
-    
+    current_host_base = current_host.split(":")[0]  # Remove port if present
+
     # Get Origin or Referer header
-    origin = request.headers.get('Origin')
-    referer = request.headers.get('Referer')
-    
+    origin = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+
     # If no Origin/Referer, allow only if from same origin (local requests)
     if not origin and not referer:
         # Allow requests without Origin/Referer for localhost/127.0.0.1
         # This is acceptable for a local mining application
         return True
-    
+
     # Always allow same-origin requests (most secure - request comes from same domain)
     if origin:
         try:
-            origin_host = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
-            origin_host_base = origin_host.split(':')[0]  # Remove port if present
+            origin_host = (
+                origin.split("://")[1].split("/")[0]
+                if "://" in origin
+                else origin.split("/")[0]
+            )
+            origin_host_base = origin_host.split(":")[0]  # Remove port if present
             if origin_host_base == current_host_base:
                 return True
         except (IndexError, AttributeError):
             pass
-    
+
     if referer:
         try:
-            referer_host = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
-            referer_host_base = referer_host.split(':')[0]  # Remove port if present
+            referer_host = (
+                referer.split("://")[1].split("/")[0]
+                if "://" in referer
+                else referer.split("/")[0]
+            )
+            referer_host_base = referer_host.split(":")[0]  # Remove port if present
             if referer_host_base == current_host_base:
                 return True
         except (IndexError, AttributeError):
             pass
-    
+
     # Check Origin header against allowed origins
     if origin:
         # Remove protocol and path, keep only origin
         try:
-            origin_base = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
-            origin_base_no_port = origin_base.split(':')[0]
+            origin_base = (
+                origin.split("://")[1].split("/")[0]
+                if "://" in origin
+                else origin.split("/")[0]
+            )
+            origin_base_no_port = origin_base.split(":")[0]
             for allowed in allowed_origins:
                 allowed = allowed.strip()
                 if not allowed:
                     continue
-                allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
-                allowed_base_no_port = allowed_base.split(':')[0]
-                if origin_base_no_port == allowed_base_no_port or origin_base_no_port in allowed_base_no_port or allowed_base_no_port in origin_base_no_port:
+                allowed_base = (
+                    allowed.split("://")[1].split("/")[0]
+                    if "://" in allowed
+                    else allowed.split("/")[0]
+                )
+                allowed_base_no_port = allowed_base.split(":")[0]
+                if (
+                    origin_base_no_port == allowed_base_no_port
+                    or origin_base_no_port in allowed_base_no_port
+                    or allowed_base_no_port in origin_base_no_port
+                ):
                     return True
         except (IndexError, AttributeError):
             pass
-    
+
     # Fallback to Referer header
     if referer:
         try:
-            referer_base = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
-            referer_base_no_port = referer_base.split(':')[0]
+            referer_base = (
+                referer.split("://")[1].split("/")[0]
+                if "://" in referer
+                else referer.split("/")[0]
+            )
+            referer_base_no_port = referer_base.split(":")[0]
             for allowed in allowed_origins:
                 allowed = allowed.strip()
                 if not allowed:
                     continue
-                allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
-                allowed_base_no_port = allowed_base.split(':')[0]
-                if referer_base_no_port == allowed_base_no_port or referer_base_no_port in allowed_base_no_port or allowed_base_no_port in referer_base_no_port:
+                allowed_base = (
+                    allowed.split("://")[1].split("/")[0]
+                    if "://" in allowed
+                    else allowed.split("/")[0]
+                )
+                allowed_base_no_port = allowed_base.split(":")[0]
+                if (
+                    referer_base_no_port == allowed_base_no_port
+                    or referer_base_no_port in allowed_base_no_port
+                    or allowed_base_no_port in referer_base_no_port
+                ):
                     return True
         except (IndexError, AttributeError):
             pass
-    
+
     # If Origin/Referer doesn't match allowed origins or current host, reject
     return False
 
@@ -914,43 +1083,62 @@ def set_config(config: dict):
     """Set the configuration reference for web UI (sanitized - no sensitive data)"""
     global _config
     # Create sanitized copy without sensitive data
+    # Preserve wallet address if it exists in the config being set
+    wallet_address = config.get("wallet", {}).get("address", "")
     sanitized = {
-        "wallet": {
-            "address": ""  # Empty - user must enter
-        },
+        "wallet": {"address": wallet_address},  # Preserve wallet address if provided
         "pool": {
             "host": config.get("pool", {}).get("host", "solo.ckpool.org"),
-            "port": config.get("pool", {}).get("port", 3333)
+            "port": config.get("pool", {}).get("port", 3333),
         },
         "network": {
             "source": config.get("network", {}).get("source", "web"),
-            "latest_block_url": config.get("network", {}).get("latest_block_url", "https://blockchain.info/latestblock"),
-            "request_timeout_secs": config.get("network", {}).get("request_timeout_secs", 15),
-            "rpc_url": config.get("network", {}).get("rpc_url", "http://127.0.0.1:8332"),
+            "latest_block_url": config.get("network", {}).get(
+                "latest_block_url", "https://blockchain.info/latestblock"
+            ),
+            "request_timeout_secs": config.get("network", {}).get(
+                "request_timeout_secs", 15
+            ),
+            "rpc_url": config.get("network", {}).get(
+                "rpc_url", "http://127.0.0.1:8332"
+            ),
             "rpc_user": "",  # Empty - user must enter
-            "rpc_password": ""  # Empty - user must enter
+            "rpc_password": "",  # Empty - user must enter
         },
         "logging": {
             "file": config.get("logging", {}).get("file", "miner.log"),
-            "level": config.get("logging", {}).get("level", "INFO")
+            "level": config.get("logging", {}).get("level", "INFO"),
         },
         "miner": {
             "restart_delay_secs": config.get("miner", {}).get("restart_delay_secs", 2),
-            "subscribe_thread_start_delay_secs": config.get("miner", {}).get("subscribe_thread_start_delay_secs", 4),
-            "hash_log_prefix_zeros": config.get("miner", {}).get("hash_log_prefix_zeros", 7)
+            "subscribe_thread_start_delay_secs": config.get("miner", {}).get(
+                "subscribe_thread_start_delay_secs", 4
+            ),
+            "hash_log_prefix_zeros": config.get("miner", {}).get(
+                "hash_log_prefix_zeros", 7
+            ),
         },
         "compute": {
-            "backend": config.get("compute", {}).get("backend", "cpu"),
+            "backend": config.get("compute", {}).get("backend", "cuda"),
             "gpu_device": config.get("compute", {}).get("gpu_device", 0),
             "batch_size": config.get("compute", {}).get("batch_size", 256),
             "max_workers": config.get("compute", {}).get("max_workers", 8),
-            "gpu_utilization_percent": config.get("compute", {}).get("gpu_utilization_percent", 100),
-            "cpu_mining_enabled": True,  # Default: enabled
-            "gpu_mining_enabled": config.get("compute", {}).get("backend") in ["cuda", "opencl"]  # Based on backend
+            "gpu_utilization_percent": config.get("compute", {}).get(
+                "gpu_utilization_percent", 100
+            ),
+            "cpu_mining_enabled": config.get("compute", {}).get(
+                "cpu_mining_enabled", True
+            ),
+            "gpu_mining_enabled": config.get("compute", {}).get(
+                "gpu_mining_enabled",
+                config.get("compute", {}).get("backend") in ["cuda", "opencl"],
+            ),
         },
         "database": {
-            "retention_days": int(os.environ.get("DB_RETENTION_DAYS", "30"))  # Default: 30 days
-        }
+            "retention_days": int(
+                os.environ.get("DB_RETENTION_DAYS", "30")
+            )  # Default: 30 days
+        },
     }
     _config = sanitized
 
@@ -959,9 +1147,18 @@ def get_config_for_ui() -> dict:
     """Get current configuration (sanitized) for web UI"""
     global _config
     if _config is None:
+        # Try to load from file to get saved wallet address
+        try:
+            from ..config import load_config
+
+            file_config = load_config()
+            wallet_address = file_config.get("wallet", {}).get("address", "")
+        except Exception:
+            wallet_address = ""
+
         # Return defaults if not set
         return {
-            "wallet": {"address": ""},
+            "wallet": {"address": wallet_address},
             "pool": {"host": "solo.ckpool.org", "port": 3333},
             "network": {
                 "source": "web",
@@ -969,30 +1166,40 @@ def get_config_for_ui() -> dict:
                 "request_timeout_secs": 15,
                 "rpc_url": "http://127.0.0.1:8332",
                 "rpc_user": "",
-                "rpc_password": ""
+                "rpc_password": "",
             },
             "logging": {"file": "miner.log", "level": "INFO"},
             "miner": {
                 "restart_delay_secs": 2,
                 "subscribe_thread_start_delay_secs": 4,
-                "hash_log_prefix_zeros": 7
+                "hash_log_prefix_zeros": 7,
             },
             "compute": {
-                "backend": "cpu",
+                "backend": "cuda",
                 "gpu_device": 0,
                 "batch_size": 256,
                 "max_workers": 8,
                 "gpu_utilization_percent": 100,
                 "cpu_mining_enabled": True,
-                "gpu_mining_enabled": False
+                "gpu_mining_enabled": False,
             },
-            "database": {"retention_days": 30}
+            "database": {"retention_days": 30},
         }
     return _config.copy()
 
 
 # Export functions for use by miner
-__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state", "set_miner", "set_config", "get_config_for_ui"]
+__all__ = [
+    "start_web_server",
+    "update_status",
+    "get_status",
+    "add_share",
+    "update_pool_status",
+    "set_miner_state",
+    "set_miner",
+    "set_config",
+    "get_config_for_ui",
+]
 
 
 INDEX_HTML = """
@@ -2023,12 +2230,14 @@ INDEX_HTML = """
                     <h3>Compute Configuration</h3>
                     <div class="settings-grid">
                         <div class="setting-item">
-                            <label for="compute-backend">Backend:</label>
+                            <label for="compute-backend">GPU Backend:</label>
                             <select id="compute-backend">
-                                <option value="cpu">CPU</option>
                                 <option value="cuda">CUDA</option>
                                 <option value="opencl">OpenCL</option>
                             </select>
+                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                                Backend für GPU-Mining. CPU-Mining wird über den Toggle unten gesteuert.
+                            </small>
                         </div>
                         <div class="setting-item">
                             <label for="gpu-device">GPU Device:</label>
@@ -2408,7 +2617,15 @@ INDEX_HTML = """
                     document.getElementById('rpc-password').value = config.network?.rpc_password || '';
                     
                     // Compute
-                    document.getElementById('compute-backend').value = config.compute?.backend || 'cpu';
+                    const backendSelect = document.getElementById('compute-backend');
+                    const storedBackend = localStorage.getItem('preferredGpuBackend') || 'cuda';
+                    const backend = config.compute?.backend;
+                    if (backend === 'cuda' || backend === 'opencl') {
+                        backendSelect.value = backend;
+                        localStorage.setItem('preferredGpuBackend', backend);
+                    } else {
+                        backendSelect.value = storedBackend;
+                    }
                     document.getElementById('gpu-device').value = config.compute?.gpu_device || 0;
                     document.getElementById('batch-size').value = config.compute?.batch_size || 256;
                     document.getElementById('max-workers').value = config.compute?.max_workers || 8;
@@ -2459,10 +2676,10 @@ INDEX_HTML = """
                 },
                 compute: {
                     backend: document.getElementById('compute-backend').value,
-                    gpu_device: parseInt(document.getElementById('gpu-device').value) || 0,
-                    batch_size: parseInt(document.getElementById('batch-size').value) || 256,
-                    max_workers: parseInt(document.getElementById('max-workers').value) || 8,
-                    gpu_utilization_percent: Math.max(1, Math.min(100, parseInt(document.getElementById('gpu-utilization').value) || 100)),
+                    gpu_device: parseInt(document.getElementById('gpu-device').value, 10) || 0,
+                    batch_size: parseInt(document.getElementById('batch-size').value, 10) || 256,
+                    max_workers: parseInt(document.getElementById('max-workers').value, 10) || 8,
+                    gpu_utilization_percent: Math.max(1, Math.min(100, parseInt(document.getElementById('gpu-utilization').value, 10) || 100)),
                     cpu_mining_enabled: document.getElementById('cpu-mining-enabled').checked,
                     gpu_mining_enabled: document.getElementById('gpu-mining-enabled').checked
                 },
@@ -2485,6 +2702,8 @@ INDEX_HTML = """
                 const data = await response.json();
                 if (data.success) {
                     alert('Configuration saved successfully!');
+                    // Reload config to show saved wallet address
+                    await loadConfig();
                 } else {
                     alert('Failed to save configuration: ' + data.error);
                 }
@@ -2544,6 +2763,13 @@ INDEX_HTML = """
         document.addEventListener('DOMContentLoaded', function() {
             const cpuCheckbox = document.getElementById('cpu-mining-enabled');
             const gpuCheckbox = document.getElementById('gpu-mining-enabled');
+            const backendSelect = document.getElementById('compute-backend');
+            
+            if (backendSelect) {
+                backendSelect.addEventListener('change', function() {
+                    localStorage.setItem('preferredGpuBackend', this.value);
+                });
+            }
             
             if (cpuCheckbox) {
                 cpuCheckbox.addEventListener('change', function() {
@@ -2553,6 +2779,12 @@ INDEX_HTML = """
             
             if (gpuCheckbox) {
                 gpuCheckbox.addEventListener('change', function() {
+                    if (this.checked && backendSelect) {
+                        const preferred = localStorage.getItem('preferredGpuBackend') || 'cuda';
+                        if (backendSelect.value !== preferred) {
+                            backendSelect.value = preferred;
+                        }
+                    }
                     toggleGpuMining(this.checked);
                 });
             }
@@ -2803,4 +3035,3 @@ INDEX_HTML = """
 </body>
 </html>
 """
-

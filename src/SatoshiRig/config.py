@@ -20,6 +20,11 @@ def _first_existing_path(paths) :
 
 def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure required sections and types exist; apply sane defaults."""
+    # Wallet section (optional, but preserve if present)
+    cfg.setdefault("wallet", {})
+    if "address" not in cfg["wallet"]:
+        cfg["wallet"]["address"] = ""
+    
     cfg.setdefault("pool", {})
     cfg["pool"].setdefault("host", "solo.ckpool.org")
     cfg["pool"].setdefault("port", 3333)

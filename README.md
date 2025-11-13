@@ -155,6 +155,8 @@ All configuration can be done via environment variables:
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 
+> **Note:** `compute.backend` represents the chosen GPU runtime (CUDA/OpenCL). CPU mining is controlled exclusively via the **CPU Mining Enabled** toggle in the web UI.
+
 ### Configuration File (`config/config.toml`)
 
 The configuration file supports the following sections:
@@ -415,11 +417,11 @@ Once running, access the dashboard at:
 - **Pool Configuration**: Host and port settings
 - **Network Configuration**: Block source (web/local), RPC settings
 - **Compute Configuration**: 
-  - GPU Backend selection (CUDA/OpenCL) - only for GPU mining
+  - GPU Backend selection (CUDA/OpenCL) – defines which GPU runtime is used when GPU mining is enabled
   - GPU device, batch size, workers, GPU utilization percentage
-  - **CPU Mining Toggle**: Enable/disable CPU mining (automatically sets backend to "cpu" when enabled)
-  - **GPU Mining Toggle**: Enable/disable GPU mining (uses selected GPU backend)
-  - Both CPU and GPU can be enabled simultaneously for combined mining
+  - **CPU Mining Toggle**: Enable/disable CPU mining independently of the backend selection
+  - **GPU Mining Toggle**: Enable/disable GPU mining; when enabled the selected GPU backend is used automatically (CUDA by default)
+  - Both CPU and GPU can be enabled simultaneously for combined mining; if both toggles are off, mining stops completely
 - **Database Configuration**: Retention period in days
 
 **Security Note**: Sensitive data (wallet address, RPC passwords) are not pre-filled from Docker environment variables for security reasons. You must enter these manually in the web UI.
