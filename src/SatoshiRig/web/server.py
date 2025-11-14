@@ -258,11 +258,13 @@ cors_origins = os.environ.get(
 socketio = SocketIO(
     app,
     cors_allowed_origins=cors_origins,
-    max_http_buffer_size=1e6,  # 1MB buffer size (default is 100KB)
+    max_http_buffer_size=10e6,  # 10MB buffer size (default is 100KB) - increased to handle large payloads
+    max_packet_size=10e6,  # 10MB max packet size
     ping_timeout=60,
     ping_interval=25,
     logger=False,  # Disable SocketIO's own logging to reduce noise
-    engineio_logger=False
+    engineio_logger=False,
+    async_mode='threading'  # Use threading mode for better compatibility
 )
 
 

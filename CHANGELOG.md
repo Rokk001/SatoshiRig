@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.1] - 2025-01-XX
+
+### Fixed
+- **SocketIO "Too many packets in payload" error**: Further improved by increasing HTTP buffer size to 10MB and adding max_packet_size configuration
+- Added `async_mode='threading'` to SocketIO configuration for better compatibility
+- Increased buffer size from 1MB to 10MB to handle very large payloads
+
+### Changed
+- SocketIO configuration now uses 10MB buffer size (increased from 1MB) to handle larger payloads
+- Added explicit `max_packet_size` parameter to SocketIO configuration
+
 ## [2.19.0] - 2025-01-XX
 
 ### Changed
@@ -170,6 +181,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.19.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.1
 [2.19.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.0
 [2.18.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.1
 [2.18.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.0
