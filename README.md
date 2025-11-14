@@ -37,7 +37,7 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 - **GPU Support**: CUDA and OpenCL support for accelerated mining
 - **Web Dashboard**: Real-time monitoring and control interface
 - **Docker Ready**: Fully containerized with NVIDIA GPU support
-- **Configuration**: Flexible TOML-based configuration
+- **Configuration**: Database-backed configuration with web UI
 - **Production Ready**: Built for long-running mining operations
 
 ---
@@ -63,7 +63,7 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 - 📱 **Responsive Design**: Works on desktop and mobile devices
 
 ### Developer Experience
-- 🔧 **TOML Configuration**: Human-readable configuration files
+- 🔧 **Database Configuration**: All settings stored in SQLite database, manageable via web UI
 - 🐳 **Docker Support**: Pre-built images on GitHub Container Registry
 - 📝 **Comprehensive Logging**: Configurable log levels and file output
 - 🚀 **CI/CD Ready**: Automated builds and releases
@@ -78,20 +78,16 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 # Pull the latest image
 docker pull ghcr.io/rokk001/satoshirig:latest
 
-# Update config/config.toml on the host and set:
-# [wallet]
-# address = "YOUR_BTC_ADDRESS"
-
-# Run the container (bind-mount config to the container)
+# Run the container (bind-mount data directory for persistent configuration)
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
-  -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
-After the container is running, open `http://localhost:5000`, enter your wallet address under **Settings → Wallet Configuration**, click **Save Configuration**, and then restart the container to begin mining.
+After the container is running, open `http://localhost:5000`, enter your wallet address under **Settings → Wallet Configuration**, click **Save Configuration**, and then click **Start Mining** to begin.
 
 ### Local Installation
 
@@ -154,58 +150,22 @@ All configuration can be done via environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CONFIG_FILE` | No | `./config/config.toml` | Path to TOML config file |
 | `COMPUTE_BACKEND` | No | `cpu` | Compute backend: `cpu`, `cuda`, or `opencl` |
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
 | `GPU_UTILIZATION_PERCENT` | No | `100` | GPU utilization percentage (1-100%) for time-slicing support |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
 | `STATE_DB` | No | `./data/state.db` | Path to the SQLite database used for dynamic settings and statistics |
 | `CORS_ORIGINS` | No | `http://localhost:5000,http://127.0.0.1:5000` | Comma-separated list of allowed CORS origins, or `*` to allow all origins (less secure) |
+| `LOG_FILE` | No | `miner.log` | Log file path (relative to working directory) |
+| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 
-> **Note:** Set your wallet address via the web dashboard (Settings → Wallet Configuration) or by editing `config/config.toml` (`[wallet].address`). Environment variables are no longer required for the wallet.
+> **Note:** All configuration is now managed via the web dashboard (Settings → Configuration). The wallet address, pool settings, network configuration, compute settings, and logging configuration are all stored in the SQLite database (`data/state.db` by default, override via `STATE_DB`).
 >
 > `compute.backend` represents the chosen GPU runtime (CUDA/OpenCL). CPU mining is controlled exclusively via the **CPU Mining Enabled** toggle in the web UI.
 >
-> Runtime settings (wallet address, pool configuration, compute toggles, statistics, etc.) are persisted in a lightweight SQLite database. By default this file lives at `data/state.db` (overridable via `STATE_DB`). Make sure the `data/` directory is writable or bind-mounted when running inside Docker.
-
-### Configuration File (`config/config.toml`)
-
-The configuration file supports the following sections:
-
-```toml
-[wallet]
-address = ""
-
-[pool]
-host = "solo.ckpool.org"
-port = 3333
-
-[network]
-# Block height source: "web" (Blockchain Explorer) or "local" (own Bitcoin Core Node)
-source = "web"            # web | local
-latest_block_url = "https://blockchain.info/latestblock"
-request_timeout_secs = 15
-
-# For source = "local": Standard Bitcoin Core JSON-RPC
-rpc_url = "http://127.0.0.1:8332"
-rpc_user = ""
-rpc_password = ""
-
-[logging]
-file = "miner.log"
-level = "INFO"            # DEBUG, INFO, WARNING, ERROR
-
-[miner]
-restart_delay_secs = 2
-subscribe_thread_start_delay_secs = 4
-hash_log_prefix_zeros = 7
-
-[compute]
-backend = "cpu"           # cpu | cuda | opencl
-gpu_device = 0
-```
+> All runtime settings (wallet address, pool configuration, compute toggles, statistics, etc.) are persisted in a lightweight SQLite database. By default this file lives at `data/state.db` (overridable via `STATE_DB`). Make sure the `data/` directory is writable or bind-mounted when running inside Docker.
 
 ### Command-Line Options
 
@@ -214,8 +174,7 @@ python -m SatoshiRig --help
 ```
 
 Available options:
-- `--wallet`, `-w`: Bitcoin wallet address (required)
-- `--config`: Path to configuration file
+- `--wallet`, `-w`: Bitcoin wallet address (optional, can be set via web UI)
 - `--backend`: Compute backend (`cpu`, `cuda`, `opencl`)
 - `--gpu`: GPU device index
 - `--web-port`: Web dashboard port (default: 5000)
@@ -233,11 +192,13 @@ Available options:
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
 
-> Set `[wallet].address` in `config/config.toml` (or via the web UI, then restart) so the miner can authenticate with the pool.
+> Configure your wallet address via the web UI at `http://localhost:5000` (Settings → Wallet Configuration), then click **Start Mining**.
 
 **Option 2: Build locally:**
 
@@ -246,18 +207,20 @@ docker build -t satoshirig .
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   satoshirig
 ```
 
-> Reminder: set `[wallet].address` in `config/config.toml` before launching.
+> Configure your wallet address via the web UI at `http://localhost:5000` (Settings → Wallet Configuration), then click **Start Mining**.
 
 ### Docker Image Details
 
 - **Published Image**: `ghcr.io/rokk001/satoshirig:latest` (public, automatically updated)
 - **Base Image**: Multi-stage build. Final image uses `nvidia/cuda:11.8.0-runtime-ubuntu22.04` (smaller). Build stage briefly uses `devel` to compile GPU wheels.
 - **Working Directory**: `/app`
-- **Default Config**: `/app/config/config.toml`
+- **Default Database**: `/app/data/state.db` (stores all configuration and statistics)
 - **Default Web Port**: `5000`
 
 ### Docker Compose
@@ -279,8 +242,8 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./config:/app/config
-      - ./data:/app/data  # Persistent statistics storage
+      - ./data:/app/data  # Persistent configuration and statistics storage
+      - ./logs:/app/logs  # Persistent log files
 
 ### Persistent Statistics
 
@@ -349,8 +312,8 @@ docker run -d \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-  -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -362,8 +325,8 @@ docker run -d \
   --gpus device=0 \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
-  -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -378,8 +341,8 @@ docker run -d \
   --device=/dev/dri:/dev/dri \
   -e COMPUTE_BACKEND=opencl \
   -e GPU_DEVICE=0 \
-  -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -450,11 +413,11 @@ Once running, access the dashboard at:
 **CSRF Protection**: The web dashboard includes CSRF protection. Same-origin requests are automatically allowed. For cross-origin access, set `CORS_ORIGINS` to a comma-separated list of allowed origins (e.g., `http://satoshirig.zhome.ch,http://localhost:5000`), or use `*` to allow all origins (less secure but convenient for local networks).
 
 Configuration values are loaded from:
-1. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`)
-2. `config.toml` file
+1. SQLite database (`data/state.db` by default)
+2. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`, `LOG_FILE`, `LOG_LEVEL`)
 3. Default values if not specified
 
-Changes made in the web UI are saved to the database and can be applied to the running miner (requires restart for some settings).
+Changes made in the web UI are saved to the database and can be applied to the running miner immediately (logging level changes apply instantly, miner restart may be required for some settings).
 
 ### Formatting
 
@@ -480,7 +443,7 @@ SatoshiRig/
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── cli.py                 # Command-line interface
-│       ├── config.py              # TOML configuration loader
+│       ├── config.py              # Database-backed configuration loader
 │       ├── miner.py               # Backward-compatible facade (DEPRECATED)
 │       ├── clients/
 │       │   ├── __init__.py        # Client module exports
@@ -504,8 +467,8 @@ SatoshiRig/
 │   ├── integration/                # Integration tests
 │   │   └── __init__.py
 │   └── test_smoke.py              # Smoke tests
-├── config/
-│   └── config.toml                 # Default configuration
+├── data/
+│   └── state.db                     # SQLite database (configuration and statistics)
 ├── .github/
 │   └── workflows/                  # CI/CD workflows
 ├── Dockerfile                       # Docker image definition

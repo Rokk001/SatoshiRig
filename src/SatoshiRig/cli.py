@@ -36,15 +36,12 @@ def _handle_sigint(signal_received , frame) :
 def main() :
     parser = argparse.ArgumentParser(prog = "satoshirig")
     parser.add_argument("--wallet" , "-w" , required = False , help = "BTC wallet address")
-    parser.add_argument("--config" , required = False , help = "Path to config.toml")
     parser.add_argument("--backend" , required = False , choices = ["cpu" , "cuda" , "opencl"])
     parser.add_argument("--gpu" , type = int , required = False , help = "GPU device index")
     parser.add_argument("--web-port" , type = int , default = 5000 , help = "Web dashboard port (default: 5000)")
     parser.add_argument("--no-web" , action = "store_true" , help = "Disable web dashboard")
     args = parser.parse_args()
 
-    if args.config :
-        os.environ["CONFIG_FILE"] = args.config
     if args.backend :
         os.environ["COMPUTE_BACKEND"] = args.backend
     if args.gpu is not None :
@@ -65,9 +62,20 @@ def main() :
             sys.exit(2)
     else:
         if WEB_AVAILABLE and not args.no_web:
+            # Setup logging with proper file path handling
+            log_file = cfg.get("logging", {}).get("file", "miner.log")
+            if log_file:
+                # Ensure log directory exists
+                log_dir = os.path.dirname(log_file) if os.path.dirname(log_file) else None
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+                # Convert to absolute path
+                if not os.path.isabs(log_file):
+                    log_file = os.path.join(os.getcwd(), log_file)
+            
             logging.basicConfig(
-                level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO) ,
-                filename = cfg.get("logging" , {}).get("file" , None) ,
+                level = getattr(logging, cfg.get("logging", {}).get("level", "INFO").upper(), logging.INFO),
+                filename = log_file if log_file else None,
                 format = '%(asctime)s %(levelname)s %(name)s %(message)s'
             )
             logger = logging.getLogger("SatoshiRig")
@@ -90,7 +98,7 @@ def main() :
                 pass
             return
         else:
-            print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in config.toml.")
+            print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in the web dashboard.")
             sys.exit(2)
 
     logging.basicConfig(
@@ -118,9 +126,10 @@ def main() :
         # Set configuration reference for web UI (sanitized - no sensitive data)
         set_config(cfg)
         try:
-            save_config(cfg)
+            from .config import persist_config_to_db
+            persist_config_to_db(cfg)
         except Exception as exc:
-            logger.warning("Failed to persist wallet to config: %s", exc)
+            logger.warning("Failed to persist wallet to database: %s", exc)
         # Determine blockchain explorer URL from config
         network_config = cfg.get("network" , {})
         if network_config.get("source") == "local" :

@@ -1,23 +1,7 @@
 import os
-import tomllib
-import tomli_w
 from typing import Any, Dict
 
 from .db import get_value, set_value
-
-
-DEFAULT_CONFIG_PATHS = [
-    os.environ.get("CONFIG_FILE") ,
-    os.path.join(os.getcwd() , "config" , "config.toml") ,
-    os.path.join(os.path.dirname(os.path.dirname(__file__)) , ".." , "config" , "config.toml") ,
-]
-
-
-def _first_existing_path(paths) :
-    for p in paths :
-        if p and os.path.isfile(os.path.abspath(p)) :
-            return os.path.abspath(p)
-    return None
 
 
 def _bool_from_str(value: str, default: bool = False) -> bool:
@@ -26,76 +10,161 @@ def _bool_from_str(value: str, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _apply_db_overrides(cfg: Dict[str, Any]) -> None:
-    # Wallet - ALWAYS from DB, never from config.toml
+def load_config() -> Dict[str, Any]:
+    """
+    Load configuration from database only (no TOML files).
+    Falls back to environment variables and defaults.
+    """
+    cfg = {}
+    
+    # Wallet - ALWAYS from DB only
     wallet_addr = get_value("settings", "wallet_address")
-    cfg.setdefault("wallet", {})
-    cfg["wallet"]["address"] = wallet_addr.strip() if wallet_addr is not None else ""
+    cfg["wallet"] = {"address": wallet_addr.strip() if wallet_addr else ""}
+    
+    # Pool - from DB, fallback to env/defaults
+    pool_host = get_value("pool", "host")
+    pool_port = get_value("pool", "port")
+    cfg["pool"] = {
+        "host": pool_host if pool_host else os.environ.get("POOL_HOST", "solo.ckpool.org"),
+        "port": int(pool_port) if pool_port else int(os.environ.get("POOL_PORT", "3333"))
+    }
+    
+    # Network - from DB, fallback to env/defaults
+    cfg["network"] = {
+        "source": get_value("network", "source") or os.environ.get("BLOCK_SOURCE", "web"),
+        "latest_block_url": get_value("network", "latest_block_url") or "https://blockchain.info/latestblock",
+        "request_timeout_secs": int(get_value("network", "request_timeout_secs") or os.environ.get("REQUEST_TIMEOUT", "15")),
+        "rpc_url": get_value("network", "rpc_url") or os.environ.get("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
+        "rpc_user": get_value("network", "rpc_user") or os.environ.get("BITCOIN_RPC_USER", ""),
+        "rpc_password": get_value("network", "rpc_password") or os.environ.get("BITCOIN_RPC_PASSWORD", ""),
+    }
+    
+    # Logging - from DB, fallback to env/defaults
+    cfg["logging"] = {
+        "file": get_value("logging", "file") or os.environ.get("LOG_FILE", "miner.log"),
+        "level": get_value("logging", "level") or os.environ.get("LOG_LEVEL", "INFO"),
+    }
+    
+    # Miner - from DB, fallback to defaults
+    cfg["miner"] = {
+        "restart_delay_secs": int(get_value("miner", "restart_delay_secs") or "2"),
+        "subscribe_thread_start_delay_secs": int(get_value("miner", "subscribe_thread_start_delay_secs") or "4"),
+        "hash_log_prefix_zeros": int(get_value("miner", "hash_log_prefix_zeros") or "7"),
+    }
+    
+    # Compute - from DB, fallback to env/defaults
+    backend = get_value("compute", "backend") or os.environ.get("COMPUTE_BACKEND", "cpu")
+    cfg["compute"] = {
+        "backend": backend,
+        "gpu_device": int(get_value("compute", "gpu_device") or os.environ.get("GPU_DEVICE", "0")),
+        "batch_size": int(get_value("compute", "batch_size") or os.environ.get("GPU_BATCH_SIZE", "256")),
+        "max_workers": int(get_value("compute", "max_workers") or os.environ.get("GPU_MAX_WORKERS", "8")),
+        "gpu_utilization_percent": int(get_value("compute", "gpu_utilization_percent") or os.environ.get("GPU_UTILIZATION_PERCENT", "100")),
+        "cpu_mining_enabled": _bool_from_str(get_value("compute", "cpu_mining_enabled"), True),
+        "gpu_mining_enabled": _bool_from_str(get_value("compute", "gpu_mining_enabled"), False),
+    }
+    
+    # Database retention
+    retention = get_value("database", "retention_days")
+    cfg["database"] = {
+        "retention_days": int(retention) if retention else 30
+    }
+    
+    return _validate_config(cfg)
 
+
+def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure required sections and types exist; apply sane defaults."""
+    # Wallet
+    cfg.setdefault("wallet", {})
+    if "address" not in cfg["wallet"]:
+        cfg["wallet"]["address"] = ""
+    
     # Pool
-    pool_cfg = cfg.setdefault("pool", {})
-    host = get_value("pool", "host")
-    if host is not None:
-        pool_cfg["host"] = host
-    port = get_value("pool", "port")
-    if port is not None:
-        try:
-            pool_cfg["port"] = int(port)
-        except ValueError:
-            pass
+    cfg.setdefault("pool", {})
+    cfg["pool"].setdefault("host", "solo.ckpool.org")
+    cfg["pool"].setdefault("port", 3333)
+    try:
+        cfg["pool"]["port"] = int(cfg["pool"]["port"])
+    except Exception:
+        cfg["pool"]["port"] = 3333
 
     # Network
-    net_cfg = cfg.setdefault("network", {})
-    for key in ("source", "latest_block_url", "rpc_url", "rpc_user", "rpc_password"):
-        db_val = get_value("network", key)
-        if db_val is not None:
-            net_cfg[key] = db_val
-    timeout_val = get_value("network", "request_timeout_secs")
-    if timeout_val is not None:
+    cfg.setdefault("network", {})
+    net = cfg["network"]
+    net.setdefault("source", "web")
+    net.setdefault("latest_block_url", "https://blockchain.info/latestblock")
+    net.setdefault("request_timeout_secs", 15)
+    net.setdefault("rpc_url", "http://127.0.0.1:8332")
+    net.setdefault("rpc_user", "")
+    net.setdefault("rpc_password", "")
+    try:
+        net["request_timeout_secs"] = int(net["request_timeout_secs"])
+    except Exception:
+        net["request_timeout_secs"] = 15
+
+    # Logging
+    cfg.setdefault("logging", {})
+    cfg["logging"].setdefault("file", "miner.log")
+    cfg["logging"].setdefault("level", "INFO")
+
+    # Miner
+    cfg.setdefault("miner", {})
+    cfg["miner"].setdefault("restart_delay_secs", 2)
+    cfg["miner"].setdefault("subscribe_thread_start_delay_secs", 4)
+    cfg["miner"].setdefault("hash_log_prefix_zeros", 7)
+    for k in ("restart_delay_secs", "subscribe_thread_start_delay_secs", "hash_log_prefix_zeros"):
         try:
-            net_cfg["request_timeout_secs"] = int(timeout_val)
-        except ValueError:
+            cfg["miner"][k] = int(cfg["miner"][k])
+        except Exception:
             pass
 
     # Compute
-    comp_cfg = cfg.setdefault("compute", {})
-    backend_val = get_value("compute", "backend")
-    if backend_val is not None:
-        comp_cfg["backend"] = backend_val
-    for key in ("gpu_device", "batch_size", "max_workers", "gpu_utilization_percent"):
-        db_val = get_value("compute", key)
-        if db_val is not None:
-            try:
-                comp_cfg[key] = int(db_val)
-            except ValueError:
-                comp_cfg[key] = db_val
-    cpu_enabled = get_value("compute", "cpu_mining_enabled")
-    if cpu_enabled is not None:
-        comp_cfg["cpu_mining_enabled"] = _bool_from_str(cpu_enabled, True)
-    gpu_enabled = get_value("compute", "gpu_mining_enabled")
-    if gpu_enabled is not None:
-        comp_cfg["gpu_mining_enabled"] = _bool_from_str(gpu_enabled, False)
+    cfg.setdefault("compute", {})
+    cfg["compute"].setdefault("backend", "cpu")
+    try:
+        cfg["compute"]["gpu_device"] = int(cfg["compute"].get("gpu_device", 0))
+    except Exception:
+        cfg["compute"]["gpu_device"] = 0
+    try:
+        cfg["compute"]["batch_size"] = int(cfg["compute"].get("batch_size", 256))
+    except Exception:
+        cfg["compute"]["batch_size"] = 256
+    try:
+        cfg["compute"]["max_workers"] = int(cfg["compute"].get("max_workers", 8))
+    except Exception:
+        cfg["compute"]["max_workers"] = 8
+    try:
+        gpu_util = int(cfg["compute"].get("gpu_utilization_percent", 100))
+        cfg["compute"]["gpu_utilization_percent"] = max(1, min(100, gpu_util))
+    except Exception:
+        cfg["compute"]["gpu_utilization_percent"] = 100
+    
+    if "cpu_mining_enabled" not in cfg["compute"]:
+        cfg["compute"]["cpu_mining_enabled"] = True
+    if "gpu_mining_enabled" not in cfg["compute"]:
+        cfg["compute"]["gpu_mining_enabled"] = False
 
-    # Logging
-    log_cfg = cfg.setdefault("logging", {})
-    log_level = get_value("logging", "level")
-    if log_level is not None:
-        log_cfg["level"] = log_level
-    log_file = get_value("logging", "file")
-    if log_file is not None:
-        log_cfg["file"] = log_file
+    # Database
+    cfg.setdefault("database", {})
+    cfg["database"].setdefault("retention_days", 30)
+    try:
+        cfg["database"]["retention_days"] = int(cfg["database"]["retention_days"])
+    except Exception:
+        cfg["database"]["retention_days"] = 30
 
-    # Database retention
-    db_cfg = cfg.setdefault("database", {})
-    retention = get_value("database", "retention_days")
-    if retention is not None:
-        try:
-            db_cfg["retention_days"] = int(retention)
-        except ValueError:
-            pass
+    return cfg
+
+
+def save_config(cfg: Dict[str, Any]) -> None:
+    """
+    Save configuration to database only (no TOML files).
+    """
+    persist_config_to_db(cfg)
 
 
 def persist_config_to_db(cfg: Dict[str, Any]) -> None:
+    """Persist configuration to database"""
     # Wallet
     set_value("settings", "wallet_address", cfg.get("wallet", {}).get("address", ""))
 
@@ -135,170 +204,15 @@ def persist_config_to_db(cfg: Dict[str, Any]) -> None:
     set_value("logging", "level", str(log_cfg.get("level", "INFO")))
     set_value("logging", "file", str(log_cfg.get("file", "miner.log")))
 
+    # Miner
+    miner_cfg = cfg.get("miner", {})
+    set_value("miner", "restart_delay_secs", str(miner_cfg.get("restart_delay_secs", 2)))
+    set_value("miner", "subscribe_thread_start_delay_secs", str(miner_cfg.get("subscribe_thread_start_delay_secs", 4)))
+    set_value("miner", "hash_log_prefix_zeros", str(miner_cfg.get("hash_log_prefix_zeros", 7)))
+
     # Database retention
     db_cfg = cfg.get("database", {})
     set_value("database", "retention_days", str(db_cfg.get("retention_days", 30)))
 
 
-def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure required sections and types exist; apply sane defaults."""
-    # Wallet section - address comes from DB only, preserve what's set
-    cfg.setdefault("wallet", {})
-    # Do NOT set default address - it comes from DB only via _apply_db_overrides
-    if "address" not in cfg["wallet"]:
-        cfg["wallet"]["address"] = ""
-    
-    cfg.setdefault("pool", {})
-    cfg["pool"].setdefault("host", "solo.ckpool.org")
-    cfg["pool"].setdefault("port", 3333)
-    try:
-        cfg["pool"]["port"] = int(cfg["pool"]["port"])
-    except Exception:
-        cfg["pool"]["port"] = 3333
-
-    cfg.setdefault("network", {})
-    net = cfg["network"]
-    net.setdefault("source", os.environ.get("BLOCK_SOURCE", "web"))
-    net.setdefault("latest_block_url", "https://blockchain.info/latestblock")
-    net.setdefault("request_timeout_secs", 15)
-    net.setdefault("rpc_url", os.environ.get("BITCOIN_RPC_URL", "http://127.0.0.1:8332"))
-    net.setdefault("rpc_user", os.environ.get("BITCOIN_RPC_USER", ""))
-    net.setdefault("rpc_password", os.environ.get("BITCOIN_RPC_PASSWORD", ""))
-    try:
-        net["request_timeout_secs"] = int(net["request_timeout_secs"])
-    except Exception:
-        net["request_timeout_secs"] = 15
-
-    cfg.setdefault("logging", {})
-    cfg["logging"].setdefault("file", "miner.log")
-    cfg["logging"].setdefault("level", "INFO")
-
-    cfg.setdefault("miner", {})
-    cfg["miner"].setdefault("restart_delay_secs", 2)
-    cfg["miner"].setdefault("subscribe_thread_start_delay_secs", 4)
-    cfg["miner"].setdefault("hash_log_prefix_zeros", 7)
-    for k in ("restart_delay_secs", "subscribe_thread_start_delay_secs", "hash_log_prefix_zeros"):
-        try:
-            cfg["miner"][k] = int(cfg["miner"][k])
-        except Exception:
-            pass
-
-    # Compute section already enriched below; just cast types here
-    cfg.setdefault("compute", {})
-    cfg["compute"].setdefault("backend", os.environ.get("COMPUTE_BACKEND", "cpu"))
-    try:
-        cfg["compute"]["gpu_device"] = int(cfg["compute"].get("gpu_device", os.environ.get("GPU_DEVICE", "0")))
-    except Exception:
-        cfg["compute"]["gpu_device"] = 0
-    try:
-        cfg["compute"]["batch_size"] = int(cfg["compute"].get("batch_size", os.environ.get("GPU_BATCH_SIZE", "256")))
-    except Exception:
-        cfg["compute"]["batch_size"] = 256
-    try:
-        cfg["compute"]["max_workers"] = int(cfg["compute"].get("max_workers", os.environ.get("GPU_MAX_WORKERS", "8")))
-    except Exception:
-        cfg["compute"]["max_workers"] = 8
-    try:
-        gpu_util = int(cfg["compute"].get("gpu_utilization_percent", os.environ.get("GPU_UTILIZATION_PERCENT", "100")))
-        # Clamp between 1 and 100
-        cfg["compute"]["gpu_utilization_percent"] = max(1, min(100, gpu_util))
-    except Exception:
-        cfg["compute"]["gpu_utilization_percent"] = 100
-    
-    # Set defaults for mining toggles if not present
-    if "cpu_mining_enabled" not in cfg["compute"]:
-        cfg["compute"]["cpu_mining_enabled"] = True  # Default: CPU mining enabled
-    if "gpu_mining_enabled" not in cfg["compute"]:
-        cfg["compute"]["gpu_mining_enabled"] = False  # Default: GPU mining disabled
-
-    return cfg
-
-
-def load_config() :
-    cfg_path = _first_existing_path(DEFAULT_CONFIG_PATHS)
-    if not cfg_path :
-        cfg = {
-            "pool": {"host": "solo.ckpool.org" , "port": 3333} ,
-            "network": {
-                "source": os.environ.get("BLOCK_SOURCE" , "web") ,  # web | local
-                "latest_block_url": "https://blockchain.info/latestblock" ,
-                "request_timeout_secs": 15 ,
-                "rpc_url": os.environ.get("BITCOIN_RPC_URL" , "http://127.0.0.1:8332") ,
-                "rpc_user": os.environ.get("BITCOIN_RPC_USER" , "") ,
-                "rpc_password": os.environ.get("BITCOIN_RPC_PASSWORD" , "")
-            } ,
-            "logging": {"file": "miner.log" , "level": "INFO"} ,
-            "miner": {
-                "restart_delay_secs": 2 ,
-                "subscribe_thread_start_delay_secs": 4 ,
-                "hash_log_prefix_zeros": 7
-            } ,
-            "compute": {"backend": os.environ.get("COMPUTE_BACKEND" , "cpu") , "gpu_device": int(os.environ.get("GPU_DEVICE" , "0"))}
-        }
-        _apply_db_overrides(cfg)
-        return _validate_config(cfg)
-    with open(cfg_path , "rb") as f :
-        cfg = tomllib.load(f)
-    # Remove wallet address from loaded config (it's DB-only)
-    if "wallet" in cfg:
-        cfg["wallet"] = cfg["wallet"].copy()
-        cfg["wallet"].pop("address", None)
-    compute = cfg.get("compute" , {})
-    if "backend" not in compute :
-        compute["backend"] = os.environ.get("COMPUTE_BACKEND" , "cpu")
-    if "gpu_device" not in compute :
-        compute["gpu_device"] = int(os.environ.get("GPU_DEVICE" , "0"))
-    cfg["compute"] = compute
-    _apply_db_overrides(cfg)  # Wallet comes from DB
-    return _validate_config(cfg)
-
-
-def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
-    """
-    Save configuration to TOML file
-    
-    Args:
-        cfg: Configuration dictionary to save
-        config_path: Optional path to config file. If None, uses first existing path or default.
-    
-    Returns:
-        Path to saved config file
-    """
-    if config_path is None:
-        config_path = _first_existing_path(DEFAULT_CONFIG_PATHS)
-        if config_path is None:
-            # Use default path
-            config_path = os.path.join(os.getcwd(), "config", "config.toml")
-    
-    # Ensure directory exists
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
-    except (OSError, PermissionError) as e:
-        raise RuntimeError(f"Failed to create config directory: {e}")
-    
-    # Validate config before saving
-    validated_cfg = _validate_config(cfg.copy())
-    
-    # Remove wallet address before saving to file (it's DB-only)
-    file_cfg = validated_cfg.copy()
-    if "wallet" in file_cfg:
-        file_cfg["wallet"] = file_cfg["wallet"].copy()
-        file_cfg["wallet"].pop("address", None)
-    
-    persist_config_to_db(validated_cfg)  # Save to DB with wallet
-    
-    # Write to file WITHOUT wallet address
-    try:
-        with open(config_path, "wb") as f:
-            tomli_w.dump(file_cfg, f)
-    except (OSError, PermissionError, IOError) as e:
-        raise RuntimeError(f"Failed to write config file '{config_path}': {e}. Check file permissions and disk space.")
-    except Exception as e:
-        raise RuntimeError(f"Unexpected error saving config file '{config_path}': {e}")
-    
-    return config_path
-
-
 CPU_MINING_ENABLED = True
-
-

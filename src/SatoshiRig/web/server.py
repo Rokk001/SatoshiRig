@@ -381,8 +381,9 @@ def stop_mining():
 
 @app.route("/api/start", methods=["POST"])
 def start_mining():
-    """Resume mining by clearing shutdown flag (Note: Requires miner restart to actually resume)"""
+    """Start or resume mining"""
     from flask import request
+    import threading
 
     # CSRF protection
     if not _check_csrf_protection(request):
@@ -412,7 +413,57 @@ def start_mining():
         )
 
     try:
-        global _miner_state
+        global _miner_state, _miner
+        
+        # Check if miner instance exists
+        if not _miner:
+            # Try to load wallet from config and start miner
+            from ..config import load_config
+            cfg = load_config()
+            wallet = cfg.get("wallet", {}).get("address", "").strip()
+            
+            if not wallet:
+                return jsonify({
+                    "success": False,
+                    "error": "NoWalletAddress",
+                    "message": "Wallet address not configured. Please set it in Settings first."
+                }), 400
+            
+            # Initialize and start miner
+            try:
+                from ..clients.pool_client import PoolClient
+                from ..core.miner import Miner
+                from ..core.state import MinerState
+                import logging
+                
+                logger = logging.getLogger("SatoshiRig")
+                pool = PoolClient(cfg["pool"]["host"], int(cfg["pool"]["port"]))
+                miner_state = MinerState() if not _miner_state else _miner_state
+                miner = Miner(wallet, cfg, pool, miner_state, logger)
+                
+                set_miner(miner)
+                set_miner_state(miner_state)
+                
+                # Start miner in background thread
+                miner_thread = threading.Thread(target=miner.start, daemon=True)
+                miner_thread.start()
+                
+                update_status("running", True)
+                update_status("wallet_address", wallet)
+                return jsonify({
+                    "success": True,
+                    "message": "Miner started successfully"
+                })
+            except Exception as e:
+                logger = logging.getLogger("SatoshiRig.web")
+                logger.error(f"Failed to start miner: {e}", exc_info=True)
+                return jsonify({
+                    "success": False,
+                    "error": "StartFailed",
+                    "message": f"Failed to start miner: {str(e)}"
+                }), 500
+        
+        # Miner exists, just clear shutdown flag
         if not _miner_state:
             return (
                 jsonify(
@@ -430,7 +481,7 @@ def start_mining():
             _miner_state.shutdown_flag = False
         update_status("running", True)
         return jsonify(
-            {"success": True, "message": "Mining resumed (may require restart)"}
+            {"success": True, "message": "Mining resumed"}
         )
     except Exception as e:
         logging.error(f"Error starting mining: {e}")
@@ -636,11 +687,11 @@ def save_config_api():
                 400,
             )
 
-        # Save to config file
+        # Save to database only (no TOML files)
         try:
-            from ..config import save_config as save_config_file, load_config
+            from ..config import persist_config_to_db, load_config
 
-            # Load original config from file to preserve sensitive data (not sanitized UI config)
+            # Load existing config from database
             try:
                 existing_config = load_config()
             except Exception:
@@ -671,19 +722,14 @@ def save_config_api():
                             else value
                         )
 
-            # Create full config for saving (merge with existing to preserve sensitive data)
+            # Create full config for saving (merge with existing)
             full_config = existing_config.copy()
             deep_merge(full_config, config)
 
-            # Get config file path from environment or use default
-            config_path = os.environ.get("CONFIG_FILE")
-            if not config_path:
-                config_path = os.path.join(os.getcwd(), "config", "config.toml")
-
-            # Save to file
-            saved_path = save_config_file(full_config, config_path)
+            # Save to database only
+            persist_config_to_db(full_config)
             logger = logging.getLogger("SatoshiRig.web")
-            logger.info(f"Configuration saved to {saved_path}")
+            logger.info("Configuration saved to database")
 
             # Update logging level if changed
             if "logging" in config:
@@ -695,19 +741,24 @@ def save_config_api():
                 except Exception as e:
                     logger.warning(f"Failed to update logging level: {e}")
 
-            # Reload config from file to get the saved wallet address
+            # Reload config from database
             try:
                 saved_config = load_config()
-                # Update in-memory config with saved config (preserves wallet address)
                 set_config(saved_config)
+                
+                # Check if wallet address was set and miner is not running - auto-start miner
+                wallet = saved_config.get("wallet", {}).get("address", "").strip()
+                if wallet and not _miner:
+                    logger.info(f"Wallet address configured, attempting to auto-start miner...")
+                    # Try to start miner (will be handled by /api/start if user clicks start button)
+                    # We don't auto-start here to avoid starting miner without user consent
             except Exception as e:
                 logger.warning(f"Could not reload config after save: {e}")
-                # Fallback: update with the config we just saved (includes wallet)
                 set_config(full_config)
         except Exception as e:
             logger = logging.getLogger("SatoshiRig.web")
-            logger.error(f"Error saving config to file: {e}")
-            # Continue anyway - at least update in-memory config with the config that was sent (includes wallet)
+            logger.error(f"Error saving config to database: {e}")
+            # Continue anyway - at least update in-memory config
             set_config(config)
 
         return (
@@ -1124,6 +1175,7 @@ def set_miner(miner):
 def update_logging_level(log_level: str, log_file: str = None):
     """Update logging level dynamically at runtime"""
     import logging
+    import os
     
     # Convert string level to logging constant
     level_map = {
@@ -1152,6 +1204,33 @@ def update_logging_level(log_level: str, log_file: str = None):
     global _miner
     if _miner and hasattr(_miner, 'log'):
         _miner.log.setLevel(level)
+    
+    # Update file handler if log_file is specified
+    if log_file:
+        # Ensure log directory exists
+        log_dir = os.path.dirname(log_file) if os.path.dirname(log_file) else None
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        
+        # Convert to absolute path if relative
+        if not os.path.isabs(log_file):
+            log_file = os.path.join(os.getcwd(), log_file)
+        
+        # Remove existing file handlers and add new one
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+                root_logger.removeHandler(handler)
+        
+        # Add new file handler
+        try:
+            file_handler = logging.FileHandler(log_file, mode='a')
+            file_handler.setLevel(level)
+            file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
+            root_logger.addHandler(file_handler)
+        except Exception as e:
+            web_logger.warning(f"Failed to create file handler for {log_file}: {e}")
     
     # Update all handlers to the new level
     for handler in root_logger.handlers:

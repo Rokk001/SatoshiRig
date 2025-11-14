@@ -5,6 +5,33 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.0] - 2025-01-XX
+
+### Changed
+- **Removed TOML Configuration**: Complete removal of TOML-based configuration system
+  - All configuration is now stored exclusively in the SQLite database
+  - No more `config/config.toml` files needed or used
+  - Configuration is managed entirely via the web UI
+  - Environment variables still work as fallbacks for initial setup
+- **Simplified CLI**: Removed `--config` parameter (no longer needed)
+- **Improved Miner Startup**: Miner can now be started automatically via web UI when wallet address is configured
+  - `/api/start` endpoint now initializes and starts the miner if it doesn't exist
+  - No container restart required after setting wallet address
+- **Enhanced Log Path Handling**: 
+  - Log directories are automatically created if they don't exist
+  - Relative log paths are converted to absolute paths
+  - Better support for Docker volume mounts (e.g., `/app/logs/miner.log`)
+
+### Removed
+- `tomli-w` dependency (no longer needed)
+- TOML file reading/writing functionality
+- `--config` CLI parameter
+- `CONFIG_FILE` environment variable support
+
+### Fixed
+- Log file path handling now properly creates directories and handles relative paths
+- Miner startup now works correctly when wallet is configured via web UI
+
 ## [2.18.1] - 2025-01-XX
 
 ### Fixed
@@ -143,6 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.19.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.0
 [2.18.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.1
 [2.18.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.0
 [2.17.3]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.3
