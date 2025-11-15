@@ -2,7 +2,13 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.0)
+## Latest Changes (v2.25.1)
+- **Critical Syntax Fix**: Fixed `SyntaxError: expected 'except' or 'finally' block` in `pool_client.py`
+  - `subscribe()` method: Corrected indentation - all code within `try` block is now properly indented
+  - `read_notify()` method: Fixed `else:` block and response processing to be within `try` block
+  - Application can now start without syntax errors
+
+## Previous Changes (v2.25.0)
 - **Critical Race Condition Fix**: Fixed race condition between pool connection and running miner
   - `connect_to_pool_only()` was closing socket while miner was using it, causing timeouts
   - Added thread-safety with `_socket_lock` in `PoolClient` for all socket operations

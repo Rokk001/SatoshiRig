@@ -5,6 +5,14 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.1] - 2025-01-27
+
+### Fixed
+- **Critical: Syntax Error in Pool Client**: Fixed `SyntaxError: expected 'except' or 'finally' block` in `pool_client.py`
+  - `subscribe()` method: Fixed incorrect indentation - all code within `try` block is now properly indented
+  - `read_notify()` method: Fixed `else:` block and response processing to be within `try` block
+  - Application can now start without syntax errors
+
 ## [2.25.0] - 2025-01-27
 
 ### Fixed
