@@ -413,7 +413,7 @@ Once running, access the dashboard at:
 
 Configuration values are loaded from:
 1. SQLite database (`data/state.db` by default)
-2. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`, `LOG_FILE`, `LOG_LEVEL`)
+2. Docker environment variables (e.g., `COMPUTE_BACKEND`, `GPU_DEVICE`, `LOG_LEVEL`)
 3. Default values if not specified
 
 Changes made in the web UI are saved to the database and can be applied to the running miner immediately (logging level changes apply instantly, miner restart may be required for some settings). All logs are written to stdout/stderr and can be viewed with `docker logs satoshirig`.
