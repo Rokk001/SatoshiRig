@@ -5,6 +5,18 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.13] - 2025-01-27
+
+### Fixed
+- **Critical: Mining Loop Always Progresses**: Fixed issue where mining loop could hang at iteration 0
+  - Wrapped entire CPU mining block in try-except to catch ALL unexpected errors
+  - `hash_count` is now ALWAYS incremented, even on unexpected exceptions
+  - Added `hash_count` increment when CPU mining is disabled and GPU is also disabled/not available
+  - Added `hash_count` increment when GPU mining fails and CPU mining is disabled
+  - Mining loop now guarantees progression in ALL scenarios (success, failure, errors, disabled states)
+  - Prevents loop from getting stuck at iteration 0 regardless of error conditions
+  - Ensures continuous mining operation and accurate hash rate calculation
+
 ## [2.25.12] - 2025-01-27
 
 ### Fixed

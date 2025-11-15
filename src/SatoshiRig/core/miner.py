@@ -1146,8 +1146,11 @@ class Miner:
                         self.log.warning(f"GPU mining: Skipping due to block header build failure (iteration {hash_count})")
                     hash_hex = None
                     nonce_hex = None
-                    # Still increment hash_count to ensure loop progresses
-                    # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
+                    # CRITICAL: If CPU mining is also disabled, increment hash_count here
+                    if not cpu_mining_enabled:
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
                 else:
                     try:
                         batch_start_time = time.time()
@@ -1191,16 +1194,22 @@ class Miner:
                             # GPU returned None - CPU mining will handle it if enabled
                             hash_hex = None
                             nonce_hex = None
-                            # Still increment hash_count to ensure loop progresses
-                            # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
+                            # CRITICAL: If CPU mining is also disabled, increment hash_count here
+                            if not cpu_mining_enabled:
+                                hash_count += 1
+                                self.total_hash_count += 1
+                                update_status("total_hashes", self.total_hash_count)
                     except Exception as e:
                         # GPU error - CPU mining will handle it if enabled
                         if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
                             self.log.error(f"GPU mining error (iteration {hash_count}): {e}, CPU mining will continue if enabled", exc_info=True)
                         hash_hex = None
                         nonce_hex = None
-                        # Still increment hash_count to ensure loop progresses
-                        # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
+                        # CRITICAL: If CPU mining is also disabled, increment hash_count here
+                        if not cpu_mining_enabled:
+                            hash_count += 1
+                            self.total_hash_count += 1
+                            update_status("total_hashes", self.total_hash_count)
             else:
                 # GPU mining disabled or not available
                 if hash_count % 1000 == 0:
@@ -1211,51 +1220,47 @@ class Miner:
             # CPU mining (runs independently if enabled, regardless of GPU status)
             # This should run even when GPU is disabled or not available
             if cpu_mining_enabled:
-                # CPU mining (original implementation)
-                with self.state._lock:
-                    prev_hash = self.state.prev_hash
-                    ntime = self.state.ntime
-                    nbits = self.state.nbits
-                # Use sequential nonce counter for better coverage (cycles through 2^32)
-                # Convert to little-endian hex format for Bitcoin block header (#72)
+                # Wrap entire CPU mining block in try-except to ensure hash_count is always incremented
                 try:
-                    cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
-                except (ValueError, TypeError) as e:
-                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                        self.log.error(f"Failed to convert nonce to little-endian (iteration {hash_count}): {e}")
-                    hash_count += 1
-                    continue
-                self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
-                try:
-                    block_header = self._build_block_header(
-                        prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
-                    )
-                    if hash_count % 1000 == 0:
-                        self.log.debug(f"CPU mining: block header built successfully, length={len(block_header)}")
-                except (RuntimeError, ValueError) as e:
-                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                        self.log.error(f"CPU mining: Failed to build block header (iteration {hash_count}): {e}")
-                        self.log.error(f"CPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0}), nonce_hex={cpu_nonce_hex}")
-                    cpu_hash_hex = None
-                    cpu_nonce_hex = None
-                    block_header = None
-                
-                if block_header is None:
-                    # Block header build failed, skip this iteration
-                    cpu_hash_hex = None
-                    cpu_nonce_hex = None
-                    # Still increment hash_count to ensure loop progresses
-                    hash_count += 1
-                    self.total_hash_count += 1
-                    update_status("total_hashes", self.total_hash_count)
-                else:
+                    # CPU mining (original implementation)
+                    with self.state._lock:
+                        prev_hash = self.state.prev_hash
+                        ntime = self.state.ntime
+                        nbits = self.state.nbits
+                    # Use sequential nonce counter for better coverage (cycles through 2^32)
+                    # Convert to little-endian hex format for Bitcoin block header (#72)
                     try:
-                        block_header_bytes = binascii.unhexlify(block_header)
-                    except binascii.Error as e:
+                        cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
+                    except (ValueError, TypeError) as e:
                         if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                            self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
+                            self.log.error(f"Failed to convert nonce to little-endian (iteration {hash_count}): {e}")
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
+                        continue
+                    self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
+                    try:
+                        if hash_count == 0:
+                            self.log.debug(f"CPU mining: About to call _build_block_header with prev_hash={prev_hash[:16] if prev_hash else None}..., merkle_root={merkle_root[:16] if merkle_root else None}..., ntime={ntime}, nbits={nbits}, nonce_hex={cpu_nonce_hex}")
+                        block_header = self._build_block_header(
+                            prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
+                        )
+                        if hash_count == 0:
+                            self.log.debug(f"CPU mining: _build_block_header returned, block_header length={len(block_header) if block_header else None}")
+                        if hash_count % 1000 == 0:
+                            self.log.debug(f"CPU mining: block header built successfully, length={len(block_header)}")
+                    except (RuntimeError, ValueError) as e:
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.error(f"CPU mining: Failed to build block header (iteration {hash_count}): {e}")
+                            self.log.error(f"CPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0}), nonce_hex={cpu_nonce_hex}")
+                        cpu_hash_hex = None
+                        cpu_nonce_hex = None
+                        block_header = None
+                    
+                    if block_header is None:
+                        # Block header build failed, skip this iteration
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
                         # Still increment hash_count to ensure loop progresses
@@ -1263,32 +1268,59 @@ class Miner:
                         self.total_hash_count += 1
                         update_status("total_hashes", self.total_hash_count)
                     else:
-                        cpu_hash_hex = hashlib.sha256(
-                            hashlib.sha256(block_header_bytes).digest()
-                        ).digest()
-                        # Convert hash to little-endian hex for Bitcoin (#69)
-                        # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
                         try:
-                            cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
-                            cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
-                        except (ValueError, TypeError, AttributeError) as e:
+                            block_header_bytes = binascii.unhexlify(block_header)
+                        except binascii.Error as e:
                             if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                                self.log.error(f"Failed to convert CPU hash to little-endian (iteration {hash_count}): {e}")
+                                self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
+                            cpu_hash_hex = None
+                            cpu_nonce_hex = None
+                            # Still increment hash_count to ensure loop progresses
                             hash_count += 1
-                            continue
-                        if hash_count % 1000 == 0:
-                            self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
-                        hash_count += 1
-                        self.total_hash_count += 1
-                        update_status("total_hashes", self.total_hash_count)
+                            self.total_hash_count += 1
+                            update_status("total_hashes", self.total_hash_count)
+                        else:
+                            cpu_hash_hex = hashlib.sha256(
+                                hashlib.sha256(block_header_bytes).digest()
+                            ).digest()
+                            # Convert hash to little-endian hex for Bitcoin (#69)
+                            # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
+                            try:
+                                cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
+                                cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
+                            except (ValueError, TypeError, AttributeError) as e:
+                                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                    self.log.error(f"Failed to convert CPU hash to little-endian (iteration {hash_count}): {e}")
+                                hash_count += 1
+                                self.total_hash_count += 1
+                                update_status("total_hashes", self.total_hash_count)
+                                continue
+                            if hash_count % 1000 == 0:
+                                self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
+                            hash_count += 1
+                            self.total_hash_count += 1
+                            update_status("total_hashes", self.total_hash_count)
+                except Exception as e:
+                    # Catch ALL unexpected errors in CPU mining to ensure loop continues
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"CPU mining: Unexpected error (iteration {hash_count}): {e}", exc_info=True)
+                    cpu_hash_hex = None
+                    cpu_nonce_hex = None
+                    # CRITICAL: Always increment hash_count even on unexpected errors
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes", self.total_hash_count)
             else:
                 # CPU mining disabled
                 if hash_count % 1000 == 0:
                     self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
                 cpu_hash_hex = None
                 cpu_nonce_hex = None
-                # Still increment hash_count to ensure loop progresses (even if only GPU is enabled)
-                # Note: hash_count will be incremented by GPU mining if enabled, or by the error handling below
+                # CRITICAL: If CPU mining is disabled and GPU is also disabled/not available, increment hash_count
+                if not (gpu_mining_enabled and self.gpu_miner):
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes", self.total_hash_count)
             
             # If GPU didn't produce a hash, use CPU hash
             # This code should run regardless of whether CPU mining is enabled or disabled
