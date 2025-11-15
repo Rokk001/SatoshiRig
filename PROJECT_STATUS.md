@@ -2,7 +2,13 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.6)
+## Latest Changes (v2.25.7)
+- **Critical Syntax Fix**: Fixed `SyntaxError: f-string expression part cannot include a backslash` in `pool_client.py`
+  - Changed `buffer.count(b'\n')` in f-string to use a variable instead
+  - Python f-strings cannot contain backslashes directly in expressions
+  - Application can now start without syntax errors
+
+## Previous Changes (v2.25.6)
 - **Critical Fix: Subscribe Timeout When Starting Miner**: Fixed timeout error when `miner.start()` is called while `connect_to_pool_only()` is still running
   - `miner.start()` now waits up to 5 seconds for subscription to become available if pool is already connected
   - Prevents "Subscribe failed: timed out" errors when starting miner immediately after pool connection

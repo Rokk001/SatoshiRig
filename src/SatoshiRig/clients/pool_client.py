@@ -74,8 +74,9 @@ class PoolClient :
                         read_timeout_count = 0  # Reset timeout counter on successful read
                     except socket.timeout:
                         # If we have at least one complete line, try to parse it
-                        if buffer.count(b'\n') > 0:
-                            self.logger.debug(f"Timeout during subscribe read, but have {buffer.count(b'\n')} complete lines, attempting to parse")
+                        newline_count = buffer.count(b'\n')
+                        if newline_count > 0:
+                            self.logger.debug(f"Timeout during subscribe read, but have {newline_count} complete lines, attempting to parse")
                             break
                         read_timeout_count += 1
                         if read_timeout_count >= max_timeout_retries:

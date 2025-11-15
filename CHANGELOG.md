@@ -5,6 +5,14 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.7] - 2025-01-27
+
+### Fixed
+- **Critical: Syntax Error in f-string**: Fixed `SyntaxError: f-string expression part cannot include a backslash` in `pool_client.py`
+  - Changed `buffer.count(b'\n')` in f-string to use a variable instead
+  - Python f-strings cannot contain backslashes directly in expressions
+  - Application can now start without syntax errors
+
 ## [2.25.6] - 2025-01-27
 
 ### Fixed
