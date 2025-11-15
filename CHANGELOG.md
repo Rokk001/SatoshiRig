@@ -5,6 +5,35 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.5] - 2025-01-27
+
+### Added
+- **Enhanced Mining Logging**: Comprehensive logging for debugging CPU/GPU mining issues
+  - Detailed notification thread logging with iteration counts and socket status
+  - Initial state logging when mining loop starts (nbits, prev_hash, extranonce, etc.)
+  - CPU mining logging: nonce generation, block header building, hash computation
+  - GPU mining logging: batch parameters, completion time, errors
+  - State validation logging every 1000 iterations
+  - Missing field warnings with detailed information
+  - Error logging with full stack traces for GPU/CPU mining failures
+  - Logging frequency optimized to avoid spam (INFO every 1000 iterations, WARNING/ERROR every 100 iterations)
+
+### Changed
+- **Improved Debugging Capabilities**: Better visibility into mining process
+  - Notification thread now logs socket status, data availability, and response processing
+  - Mining loop logs configuration, state values, and iteration progress
+  - CPU/GPU mining status clearly logged when enabled/disabled
+  - Block header building errors include detailed field information
+  - Hash computation progress logged with target comparison
+
+### Technical Details
+- Notification thread logs socket state, read operations, and response parsing
+- Mining loop logs initial state, configuration, and iteration details
+- CPU mining logs nonce generation, block header building, and hash computation
+- GPU mining logs batch operations, completion time, and errors
+- All logs include iteration counts for better tracking
+- Error logs include full context (field presence, lengths, values)
+
 ## [2.25.4] - 2025-01-27
 
 ### Fixed

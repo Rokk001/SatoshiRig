@@ -520,28 +520,38 @@ class Miner:
 
     def _listen_for_notifications(self):
         """Continuously listen for pool notifications in background thread"""
-        self.log.debug("Notification listener thread started")
+        self.log.info("Notification listener thread started")
+        iteration_count = 0
         while self._notification_thread_running and self._running:
             try:
+                iteration_count += 1
                 with self.pool._socket_lock:
-                    if self.pool.sock is None or self.pool.sock.fileno() == -1:
-                        # Socket not connected, wait and retry
+                    if self.pool.sock is None:
+                        self.log.warning(f"Notification thread: Socket is None (iteration {iteration_count}), waiting 1s...")
+                        time.sleep(1)
+                        continue
+                    if self.pool.sock.fileno() == -1:
+                        self.log.warning(f"Notification thread: Socket fileno is -1 (iteration {iteration_count}), waiting 1s...")
                         time.sleep(1)
                         continue
                     
                     # Use select to check if data is available (non-blocking check)
                     readable, _, _ = select.select([self.pool.sock], [], [], 1.0)
                     if not readable:
-                        # No data available, continue loop
+                        # No data available, continue loop (log every 10 iterations to avoid spam)
+                        if iteration_count % 10 == 0:
+                            self.log.debug(f"Notification thread: No data available (iteration {iteration_count})")
                         continue
                     
                     # Data available, set short timeout for reading
                     original_timeout = self.pool.sock.gettimeout()
                     self.pool.sock.settimeout(2.0)  # 2 second timeout for non-blocking read
+                    self.log.debug(f"Notification thread: Data available, reading (iteration {iteration_count})")
                 
                 # Read notification (outside lock to avoid blocking)
                 try:
                     responses = self.pool.read_notify()
+                    self.log.debug(f"Notification thread: read_notify() returned {len(responses) if responses else 0} responses")
                     
                     # Restore original timeout (inside lock)
                     with self.pool._socket_lock:
@@ -549,7 +559,8 @@ class Miner:
                             self.pool.sock.settimeout(original_timeout if original_timeout else self.pool.timeout)
                     
                     if responses and len(responses) > 0:
-                        for response in responses:
+                        for idx, response in enumerate(responses):
+                            self.log.debug(f"Notification thread: Processing response {idx+1}/{len(responses)}, keys={list(response.keys()) if isinstance(response, dict) else 'not a dict'}")
                             if "params" in response and len(response["params"]) >= 9:
                                 # Process mining.notify message
                                 with self.state._lock:
@@ -566,11 +577,14 @@ class Miner:
                                     ) = response["params"]
                                     self.state.updated_prev_hash = self.state.prev_hash
                                 
-                                self.log.info(f"Received mining notification: job_id={self.state.job_id}, prev_hash={self.state.prev_hash[:16]}...")
+                                self.log.info(f"Notification thread: Received mining.notify - job_id={self.state.job_id}, prev_hash={self.state.prev_hash[:16]}..., nbits={self.state.nbits}, ntime={self.state.ntime}")
+                                self.log.debug(f"Notification thread: State updated - version={self.state.version}, clean_jobs={self.state.clean_jobs}, extranonce1={self.state.extranonce1[:8] if self.state.extranonce1 else None}...")
                                 update_status("job_id", self.state.job_id)
+                            else:
+                                self.log.warning(f"Notification thread: Response {idx+1} is not a valid mining.notify (has 'params': {'params' in response}, params length: {len(response.get('params', [])) if 'params' in response else 0})")
                 except (socket.timeout, ConnectionError) as e:
                     # Timeout or connection error - this is OK, just continue listening
-                    self.log.debug(f"Notification read timeout/error (will retry): {e}")
+                    self.log.warning(f"Notification thread: read_notify timeout/error (iteration {iteration_count}): {e}")
                     # Restore original timeout
                     with self.pool._socket_lock:
                         if self.pool.sock:
@@ -581,7 +595,7 @@ class Miner:
                     time.sleep(0.5)
                     continue
                 except Exception as e:
-                    self.log.warning(f"Error reading notification: {e}")
+                    self.log.error(f"Notification thread: Error reading notification (iteration {iteration_count}): {e}", exc_info=True)
                     # Restore original timeout
                     with self.pool._socket_lock:
                         if self.pool.sock:
@@ -593,10 +607,10 @@ class Miner:
                     continue
                     
             except Exception as e:
-                self.log.error(f"Error in notification listener: {e}", exc_info=True)
+                self.log.error(f"Notification thread: Unexpected error (iteration {iteration_count}): {e}", exc_info=True)
                 time.sleep(1)
         
-        self.log.debug("Notification listener thread stopped")
+        self.log.info("Notification listener thread stopped")
 
     def connect_to_pool_only(self):
         """Connect to pool, subscribe, and authorize without starting mining loop"""
@@ -829,7 +843,12 @@ class Miner:
             gpu_mining_enabled = self.cfg.get("compute", {}).get("gpu_mining_enabled", False)
         self.log.info(f"Mining configuration: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner available={self.gpu_miner is not None}")
         
-        self.log.debug("Starting hash computation loop")
+        # Log initial state values
+        with self.state._lock:
+            self.log.info(f"Initial mining state: nbits={self.state.nbits}, prev_hash={self.state.prev_hash[:16] if self.state.prev_hash else None}..., ntime={self.state.ntime}, extranonce1={self.state.extranonce1[:8] if self.state.extranonce1 else None}..., extranonce2_size={self.state.extranonce2_size}")
+            self.log.debug(f"Initial state details: job_id={self.state.job_id}, version={self.state.version}, coinbase_part1 length={len(self.state.coinbase_part1) if self.state.coinbase_part1 else 0}, coinbase_part2 length={len(self.state.coinbase_part2) if self.state.coinbase_part2 else 0}, merkle_branch length={len(self.state.merkle_branch) if self.state.merkle_branch else 0}")
+        
+        self.log.info("Starting hash computation loop")
 
         while True:
             with self.state._lock:
@@ -989,6 +1008,10 @@ class Miner:
                 merkle_branch = self.state.merkle_branch
                 extranonce2_size = self.state.extranonce2_size
             
+            # Log state values every 1000 iterations
+            if hash_count % 1000 == 0:
+                self.log.debug(f"Mining state check: coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, extranonce2_size={extranonce2_size}, merkle_branch length={len(merkle_branch) if merkle_branch else 0}")
+            
             # Generate new extranonce2 for this iteration (#67)
             if not hasattr(self, 'extranonce2_counter'):
                 self.extranonce2_counter = 0
@@ -997,7 +1020,8 @@ class Miner:
             
             # Build coinbase and calculate merkle_root
             if not coinbase_part1 or not extranonce1 or not coinbase_part2:
-                self.log.warning("Missing coinbase fields, skipping iteration")
+                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                    self.log.warning(f"Missing coinbase fields (iteration {hash_count}): coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, skipping iteration")
                 hash_count += 1
                 continue
             
@@ -1028,7 +1052,10 @@ class Miner:
 
             # Log mining iteration start (every 1000 iterations to avoid spam)
             if hash_count % 1000 == 0:
-                self.log.debug(f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}")
+                with self.state._lock:
+                    current_nbits = self.state.nbits
+                    current_prev_hash = self.state.prev_hash
+                self.log.info(f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}, nbits={current_nbits}, prev_hash={current_prev_hash[:16] if current_prev_hash else None}...")
 
             # Use GPU miner if enabled and available
             if gpu_mining_enabled and self.gpu_miner:
@@ -1042,10 +1069,12 @@ class Miner:
                         prev_hash, merkle_root, ntime, nbits, "00000000"
                     )
                     block_header_hex = block_header_base
-                    self.log.debug(f"GPU mining: block_header_base length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"GPU mining: block_header_base built, length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
                 except (RuntimeError, ValueError) as e:
-                    self.log.error(f"Failed to build block header for GPU mining: {e}")
-                    self.log.error(f"Block header fields: prev_hash length={len(prev_hash) if prev_hash else 0}, merkle_root length={len(merkle_root) if merkle_root else 0}, ntime length={len(ntime) if ntime else 0}, nbits length={len(nbits) if nbits else 0}")
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"GPU mining: Failed to build block header (iteration {hash_count}): {e}")
+                        self.log.error(f"GPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0})")
                     hash_hex = None
                     nonce_hex = None
                     # Continue to CPU mining if enabled
@@ -1056,12 +1085,14 @@ class Miner:
                 num_nonces_per_batch = self.cfg.get("compute", {}).get(
                     "batch_size", 256
                 )
-                self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
 
                 # Try GPU batch hashing (use sequential nonce counter for better coverage)
                 if block_header_hex is None:
                     # Block header build failed, skip GPU mining
-                    self.log.warning("Skipping GPU mining due to block header build failure")
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.warning(f"GPU mining: Skipping due to block header build failure (iteration {hash_count})")
                     hash_hex = None
                     nonce_hex = None
                 else:
@@ -1073,7 +1104,8 @@ class Miner:
                             start_nonce=self.gpu_nonce_counter,
                         )
                         batch_duration = time.time() - batch_start_time
-                        self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}")
+                        if hash_count % 1000 == 0:
+                            self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}, hash_count={hash_count}")
 
                         if result and isinstance(result, tuple) and len(result) == 2:
                             hash_hex, best_nonce = result
@@ -1108,9 +1140,16 @@ class Miner:
                             nonce_hex = None
                     except Exception as e:
                         # GPU error - CPU mining will handle it if enabled
-                        self.log.error(f"GPU mining error: {e}, CPU mining will continue if enabled")
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.error(f"GPU mining error (iteration {hash_count}): {e}, CPU mining will continue if enabled", exc_info=True)
                         hash_hex = None
                         nonce_hex = None
+            else:
+                # GPU mining disabled or not available
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"GPU mining: DISABLED or NOT AVAILABLE (iteration {hash_count}, enabled={gpu_mining_enabled}, miner={self.gpu_miner is not None})")
+                hash_hex = None
+                nonce_hex = None
 
             # CPU mining (runs independently if enabled, regardless of GPU status)
             # This should run even when GPU is disabled or not available
@@ -1124,14 +1163,18 @@ class Miner:
                 # Convert to little-endian hex format for Bitcoin block header (#72)
                 cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
                 self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
-                self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}")
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
                 try:
                     block_header = self._build_block_header(
                         prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
                     )
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"CPU mining: block header built successfully, length={len(block_header)}")
                 except (RuntimeError, ValueError) as e:
-                    self.log.error(f"Failed to build block header for CPU mining: {e}")
-                    self.log.error(f"Block header fields: prev_hash length={len(prev_hash) if prev_hash else 0}, merkle_root length={len(merkle_root) if merkle_root else 0}, ntime length={len(ntime) if ntime else 0}, nbits length={len(nbits) if nbits else 0}, nonce_hex={cpu_nonce_hex}")
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"CPU mining: Failed to build block header (iteration {hash_count}): {e}")
+                        self.log.error(f"CPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0}), nonce_hex={cpu_nonce_hex}")
                     cpu_hash_hex = None
                     cpu_nonce_hex = None
                     block_header = None
@@ -1144,9 +1187,8 @@ class Miner:
                     try:
                         block_header_bytes = binascii.unhexlify(block_header)
                     except binascii.Error as e:
-                        self.log.error(
-                            f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}"
-                        )
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
                     else:
@@ -1157,10 +1199,17 @@ class Miner:
                         # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
                         cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
                         cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
-                        self.log.debug(f"CPU hash computed (little-endian): {cpu_hash_hex[:32]}...")
+                        if hash_count % 1000 == 0:
+                            self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
                         hash_count += 1
                         self.total_hash_count += 1
                         update_status("total_hashes", self.total_hash_count)
+            else:
+                # CPU mining disabled
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
+                cpu_hash_hex = None
+                cpu_nonce_hex = None
                 
                 # If GPU didn't produce a hash, use CPU hash
                 if hash_hex is None:
