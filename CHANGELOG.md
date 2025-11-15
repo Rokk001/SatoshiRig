@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.9] - 2025-01-27
+
+### Fixed
+- **Critical: Hash Rate Not Calculated**: Fixed issue where hash rate was only calculated when hash was successfully produced
+  - Hash rate calculation was moved before `hash_hex`/`nonce_hex` validation check
+  - Hash rate is now calculated in every iteration, regardless of whether hash was produced
+  - Dashboard now correctly displays hash rate even when mining loop is running but no successful hashes yet
+  - Prevents hash rate from showing 0 H/s when mining is actually active
+
 ## [2.25.8] - 2025-01-27
 
 ### Fixed

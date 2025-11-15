@@ -1261,6 +1261,16 @@ class Miner:
                         hash_hex = cpu_hash_hex
                         nonce_hex = cpu_nonce_hex
 
+            # Calculate hash rate in every iteration (before checking hash_hex/nonce_hex)
+            # This ensures hash rate is always updated, even if hash_hex is None
+            elapsed = time.time() - start_time
+            if elapsed > 0:
+                hash_rate = hash_count / elapsed
+                update_status("hash_rate", hash_rate)
+                # Log hash rate every 1000 hashes in DEBUG mode
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
+
             # Update hash_count even if no mining was performed (#51)
             if hash_hex is None or nonce_hex is None:
                 if not cpu_mining_enabled and not (gpu_mining_enabled and self.gpu_miner):

@@ -2,7 +2,14 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.8)
+## Latest Changes (v2.25.9)
+- **Critical Fix: Hash Rate Not Calculated**: Fixed issue where hash rate was only calculated when hash was successfully produced
+  - Hash rate calculation was moved before `hash_hex`/`nonce_hex` validation check
+  - Hash rate is now calculated in every iteration, regardless of whether hash was produced
+  - Dashboard now correctly displays hash rate even when mining loop is running but no successful hashes yet
+  - Prevents hash rate from showing 0 H/s when mining is actually active
+
+## Previous Changes (v2.25.8)
 - **Critical Fix: CPU Mining Hash Not Assigned**: Fixed issue where `hash_hex` and `nonce_hex` were not set from CPU mining results
   - Code that assigns `hash_hex = cpu_hash_hex` was incorrectly placed inside `else:` block (only executed when CPU mining disabled)
   - Moved hash assignment code outside of `if cpu_mining_enabled:` block so it always executes
