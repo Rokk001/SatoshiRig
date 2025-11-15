@@ -2,7 +2,14 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.1)
+## Latest Changes (v2.25.2)
+- **Pool Status Dashboard Fix**: Fixed pool connection status not updating immediately in web dashboard
+  - `update_pool_status()` now sends immediate SocketIO notification to frontend
+  - Dashboard shows correct connection status in real-time instead of waiting 2-3 seconds
+  - Added `set_socketio_instance()` function to register SocketIO instance for immediate updates
+  - Pool status badge now updates instantly when connection state changes
+
+## Previous Changes (v2.25.1)
 - **Critical Syntax Fix**: Fixed `SyntaxError: expected 'except' or 'finally' block` in `pool_client.py`
   - `subscribe()` method: Corrected indentation - all code within `try` block is now properly indented
   - `read_notify()` method: Fixed `else:` block and response processing to be within `try` block

@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.2] - 2025-01-27
+
+### Fixed
+- **Pool Status Dashboard Update**: Fixed pool connection status not updating immediately in web dashboard
+  - `update_pool_status()` now sends immediate SocketIO notification to frontend
+  - Dashboard shows correct connection status in real-time instead of waiting 2-3 seconds
+  - Added `set_socketio_instance()` function to register SocketIO instance for immediate updates
+  - Pool status badge now updates instantly when connection state changes
+
 ## [2.25.1] - 2025-01-27
 
 ### Fixed

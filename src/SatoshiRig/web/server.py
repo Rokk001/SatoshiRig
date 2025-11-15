@@ -59,6 +59,7 @@ from .status import (
     get_status,
     add_share,
     update_pool_status,
+    set_socketio_instance,
 )
 
 
@@ -272,6 +273,9 @@ socketio = SocketIO(
     engineio_logger=False,
     async_mode='threading'  # Use threading mode for better compatibility
 )
+
+# Register SocketIO instance with status module for immediate updates
+set_socketio_instance(socketio)
 
 
 @app.route("/favicon.ico")

@@ -2,12 +2,15 @@
 import threading
 from collections import deque
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
 # Import persistent statistics
 from .stats_persistence import load_statistics, save_statistics, merge_statistics
 
 STATUS_LOCK = threading.Lock()
+
+# Global reference to SocketIO instance for immediate status updates
+_socketio_instance: Optional[object] = None
 
 # Load persistent statistics on startup
 _persistent_stats = load_statistics()
@@ -205,12 +208,26 @@ def add_share(accepted: bool, response: str = None):
         update_status("shares_submitted", STATUS["shares_submitted"])
 
 
+def set_socketio_instance(socketio_instance):
+    """Set the SocketIO instance for immediate status updates"""
+    global _socketio_instance
+    _socketio_instance = socketio_instance
+
+
 def update_pool_status(connected: bool, host: str = None, port: int = None):
-    """Update pool connection status"""
+    """Update pool connection status and immediately notify frontend via SocketIO"""
     with STATUS_LOCK:
         STATUS["pool_connected"] = connected
         if host:
             STATUS["pool_host"] = host
         if port:
             STATUS["pool_port"] = port
+    
+    # Immediately notify frontend via SocketIO if available
+    if _socketio_instance is not None:
+        try:
+            _socketio_instance.emit("status", get_status())
+        except Exception:
+            # Ignore errors if SocketIO is not ready or clients are not connected
+            pass
 
