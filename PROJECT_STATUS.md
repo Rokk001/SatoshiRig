@@ -2,7 +2,15 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.20.0)
+## Latest Changes (v2.21.0)
+- **Critical Share Submission Fixes**: Fixed multiple critical bugs that prevented valid shares from being accepted
+  - **Syntax Error Fix**: Fixed Python syntax error in GPU mining try-except block (corrected indentation)
+  - **Bug #73 - extranonce2**: Fixed incorrect `extranonce2` value in share submission - now uses value from current iteration instead of stale state value
+  - **Bug #74 - Race Condition**: Fixed race condition where `job_id`, `ntime`, `prev_hash` could change between solution discovery and submission
+  - **Bug #75 - ntime Consistency**: Fixed inconsistent `ntime` usage - now uses single atomic value
+  - All solution parameters are now captured atomically when solution is found, preventing state changes from causing share rejection
+
+## Previous Changes (v2.20.0)
 - **Critical Bitcoin Protocol Fixes**: Fixed multiple critical issues preventing mining from working
   - **Byte-Order Corrections**: All block header fields (version, prev_hash, merkle_root, ntime, nbits, nonce) are now correctly converted to little-endian format (Bitcoin standard)
   - **Hash Byte-Order**: CPU and GPU hashes are now converted to little-endian before target comparison

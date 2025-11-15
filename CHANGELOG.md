@@ -5,6 +5,29 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.0] - 2025-01-27
+
+### Fixed
+- **Critical: Syntax Error**: Fixed Python syntax error in GPU mining try-except block
+  - Corrected indentation of lines 852-885 to be inside the try block
+  - Prevents `SyntaxError: expected 'except' or 'finally' block` on startup
+- **Critical: Share Submission Bug #73**: Fixed incorrect `extranonce2` value in share submission
+  - `extranonce2` was being read from state instead of using the value from the current iteration
+  - Now correctly uses the `extranonce2` value that was used to generate the solution
+  - Prevents pool from rejecting valid shares due to mismatched `extranonce2`
+- **Critical: Share Submission Bug #74**: Fixed race condition in share submission
+  - All solution values (`job_id`, `ntime`, `prev_hash`, `nbits`, `version`) are now captured atomically when solution is found
+  - Prevents state changes between solution discovery and submission from causing share rejection
+  - Values are stored in `solution_*` variables before submission
+- **Critical: Share Submission Bug #75**: Fixed inconsistent `ntime` usage
+  - `ntime` was being read from state twice (once for logging, once for submission)
+  - Now uses a single consistent `solution_ntime` value captured atomically
+
+### Changed
+- **Share Submission**: Refactored share submission logic to capture all solution parameters atomically
+  - All values from the iteration where the solution was found are now preserved
+  - Prevents race conditions when pool sends new block notifications during submission
+
 ## [2.20.0] - 2025-01-27
 
 ### Fixed

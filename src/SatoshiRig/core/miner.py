@@ -845,40 +845,40 @@ class Miner:
                     try:
                         batch_start_time = time.time()
                         result = self.gpu_miner.hash_block_header(
-                        block_header_hex,
-                        num_nonces=num_nonces_per_batch,
-                        start_nonce=self.gpu_nonce_counter,
-                    )
-                    batch_duration = time.time() - batch_start_time
-                    self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}")
+                            block_header_hex,
+                            num_nonces=num_nonces_per_batch,
+                            start_nonce=self.gpu_nonce_counter,
+                        )
+                        batch_duration = time.time() - batch_start_time
+                        self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}")
 
-                    if result and isinstance(result, tuple) and len(result) == 2:
-                        hash_hex, best_nonce = result
-                        # Convert GPU hash to little-endian for Bitcoin (#69)
-                        # GPU returns hash in big-endian (from binascii.hexlify), but Bitcoin uses little-endian
-                        hash_hex = self._hex_to_little_endian(hash_hex, 64)
-                        # Convert nonce to little-endian hex format for Bitcoin block header (#72)
-                        nonce_hex = self._int_to_little_endian_hex(best_nonce, 4)
-                        # Update hash count based on actual batch size
-                        hash_count += num_nonces_per_batch
-                        self.total_hash_count += num_nonces_per_batch
-                        update_status("total_hashes", self.total_hash_count)
-                        # Increment nonce counter for next batch (FIX: use start_nonce + num_nonces, not best_nonce + 1)
-                        # This ensures we don't skip any nonce ranges
-                        self.gpu_nonce_counter = (
-                            self.gpu_nonce_counter + num_nonces_per_batch
-                        ) % (2**32)
+                        if result and isinstance(result, tuple) and len(result) == 2:
+                            hash_hex, best_nonce = result
+                            # Convert GPU hash to little-endian for Bitcoin (#69)
+                            # GPU returns hash in big-endian (from binascii.hexlify), but Bitcoin uses little-endian
+                            hash_hex = self._hex_to_little_endian(hash_hex, 64)
+                            # Convert nonce to little-endian hex format for Bitcoin block header (#72)
+                            nonce_hex = self._int_to_little_endian_hex(best_nonce, 4)
+                            # Update hash count based on actual batch size
+                            hash_count += num_nonces_per_batch
+                            self.total_hash_count += num_nonces_per_batch
+                            update_status("total_hashes", self.total_hash_count)
+                            # Increment nonce counter for next batch (FIX: use start_nonce + num_nonces, not best_nonce + 1)
+                            # This ensures we don't skip any nonce ranges
+                            self.gpu_nonce_counter = (
+                                self.gpu_nonce_counter + num_nonces_per_batch
+                            ) % (2**32)
 
-                        # Time-Slicing: Pause based on GPU utilization percentage
-                        if gpu_utilization_percent < 100 and batch_duration > 0:
-                            # Calculate pause time: if 20% utilization, pause 80% of the time
-                            # Formula: pause_time = batch_duration * (100 - utilization) / utilization
-                            pause_ratio = (
-                                100 - gpu_utilization_percent
-                            ) / gpu_utilization_percent
-                            pause_time = batch_duration * pause_ratio
-                            if pause_time > 0:
-                                time.sleep(pause_time)
+                            # Time-Slicing: Pause based on GPU utilization percentage
+                            if gpu_utilization_percent < 100 and batch_duration > 0:
+                                # Calculate pause time: if 20% utilization, pause 80% of the time
+                                # Formula: pause_time = batch_duration * (100 - utilization) / utilization
+                                pause_ratio = (
+                                    100 - gpu_utilization_percent
+                                ) / gpu_utilization_percent
+                                pause_time = batch_duration * pause_ratio
+                                if pause_time > 0:
+                                    time.sleep(pause_time)
                         else:
                             # GPU returned None - CPU mining will handle it if enabled
                             hash_hex = None
@@ -1043,24 +1043,30 @@ class Miner:
             if hash_int < target_int:
                 self.log.info("Block solved at height %s", current_height + 1)
                 self.log.info("Block hash %s", hash_hex)
-                # Build block header for logging (reconstruct from solution)
+                
+                # CRITICAL FIX (#73, #74, #75): Capture all values from current iteration BEFORE state might change
+                # These values are from the iteration where the solution was found
+                solution_extranonce2 = extranonce2  # From line 772 - current iteration (not from state!)
+                solution_merkle_root = merkle_root   # From line 798 - current iteration
+                
+                # Get stable state values (these should not change during a job, but capture them atomically)
                 with self.state._lock:
-                    prev_hash = self.state.prev_hash
-                    ntime = self.state.ntime
-                    nbits = self.state.nbits
+                    solution_job_id = self.state.job_id
+                    solution_ntime = self.state.ntime
+                    solution_prev_hash = self.state.prev_hash
+                    solution_nbits = self.state.nbits
+                    solution_version = self.state.version
+                
+                # Build block header for logging (reconstruct from solution)
                 solution_block_header = self._build_block_header(
-                    prev_hash, merkle_root, ntime, nbits, nonce_hex
+                    solution_prev_hash, solution_merkle_root, solution_ntime, solution_nbits, nonce_hex
                 )
                 self.log.debug("Blockheader %s", solution_block_header)
-                self.log.debug(f"Solution details: nonce={nonce_hex}, extranonce2={extranonce2}, ntime={ntime}, job_id={self.state.job_id}")
+                self.log.debug(f"Solution details: nonce={nonce_hex}, extranonce2={solution_extranonce2}, ntime={solution_ntime}, job_id={solution_job_id}")
                 try:
-                    with self.state._lock:
-                        job_id = self.state.job_id
-                        extranonce2 = self.state.extranonce2
-                        ntime = self.state.ntime
-                    self.log.debug(f"Submitting solution to pool: wallet={self.wallet[:10]}..., job_id={job_id}, nonce={nonce_hex}")
+                    self.log.debug(f"Submitting solution to pool: wallet={self.wallet[:10]}..., job_id={solution_job_id}, nonce={nonce_hex}, extranonce2={solution_extranonce2}")
                     ret = self.pool.submit(
-                        self.wallet, job_id, extranonce2, ntime, nonce_hex
+                        self.wallet, solution_job_id, solution_extranonce2, solution_ntime, nonce_hex
                     )
                     self.log.info("Pool response %s", ret)
                     self.log.debug(f"Full pool response: {ret}")
