@@ -5,6 +5,19 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.12] - 2025-01-27
+
+### Fixed
+- **Critical: Comprehensive Mining Loop Error Handling**: Fixed 6 critical issues that could cause the mining loop to crash or hang at iteration 0
+  - Added try-except around `binascii.unhexlify(coinbase)` to prevent crashes on invalid hex data
+  - Added try-except around `binascii.unhexlify(branch_hash)` in merkle branch processing to prevent crashes
+  - Added try-except around `_hex_to_little_endian()` for merkle_root conversion to prevent crashes
+  - Added try-except around `_int_to_little_endian_hex()` for CPU nonce conversion to prevent crashes
+  - Added try-except around `_hex_to_little_endian()` for CPU hash conversion to prevent crashes
+  - Added `hash_count += 1` before all `continue` statements in validation checks to prevent loop from getting stuck
+  - Mining loop now handles all error cases gracefully and continues processing instead of crashing
+  - Ensures continuous loop progression even when encountering invalid data from pool
+
 ## [2.25.11] - 2025-01-27
 
 ### Fixed

@@ -1059,23 +1059,41 @@ class Miner:
                 continue
             
             coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
-            coinbase_hash_bin = hashlib.sha256(
-                hashlib.sha256(binascii.unhexlify(coinbase)).digest()
-            ).digest()
+            try:
+                coinbase_hash_bin = hashlib.sha256(
+                    hashlib.sha256(binascii.unhexlify(coinbase)).digest()
+                ).digest()
+            except (binascii.Error, ValueError) as e:
+                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                    self.log.error(f"Failed to unhexlify coinbase (iteration {hash_count}): {e}, coinbase length={len(coinbase)}")
+                hash_count += 1
+                continue
             
             merkle_root_bin = coinbase_hash_bin
             if merkle_branch:
                 for branch_hash in merkle_branch:
-                    branch_hash_bytes = binascii.unhexlify(branch_hash)
-                    merkle_root_bin = hashlib.sha256(
-                        hashlib.sha256(
-                            merkle_root_bin + branch_hash_bytes
+                    try:
+                        branch_hash_bytes = binascii.unhexlify(branch_hash)
+                        merkle_root_bin = hashlib.sha256(
+                            hashlib.sha256(
+                                merkle_root_bin + branch_hash_bytes
+                            ).digest()
                         ).digest()
-                    ).digest()
+                    except (binascii.Error, ValueError) as e:
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.error(f"Failed to unhexlify merkle branch hash (iteration {hash_count}): {e}, branch_hash={branch_hash[:50] if branch_hash else None}")
+                        # Skip this branch hash and continue with next
+                        continue
             
             # Convert merkle_root to little-endian hex for block header
-            merkle_root_hex = binascii.hexlify(merkle_root_bin).decode()
-            merkle_root = self._hex_to_little_endian(merkle_root_hex, 64)
+            try:
+                merkle_root_hex = binascii.hexlify(merkle_root_bin).decode()
+                merkle_root = self._hex_to_little_endian(merkle_root_hex, 64)
+            except (ValueError, TypeError, AttributeError) as e:
+                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                    self.log.error(f"Failed to convert merkle_root to little-endian (iteration {hash_count}): {e}")
+                hash_count += 1
+                continue
 
             # Initialize hash_hex to None (will be set by GPU or CPU mining)
             hash_hex = None
@@ -1200,7 +1218,13 @@ class Miner:
                     nbits = self.state.nbits
                 # Use sequential nonce counter for better coverage (cycles through 2^32)
                 # Convert to little-endian hex format for Bitcoin block header (#72)
-                cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
+                try:
+                    cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
+                except (ValueError, TypeError) as e:
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"Failed to convert nonce to little-endian (iteration {hash_count}): {e}")
+                    hash_count += 1
+                    continue
                 self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
                 if hash_count % 1000 == 0:
                     self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
@@ -1244,8 +1268,14 @@ class Miner:
                         ).digest()
                         # Convert hash to little-endian hex for Bitcoin (#69)
                         # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
-                        cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
-                        cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
+                        try:
+                            cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
+                            cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
+                        except (ValueError, TypeError, AttributeError) as e:
+                            if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                self.log.error(f"Failed to convert CPU hash to little-endian (iteration {hash_count}): {e}")
+                            hash_count += 1
+                            continue
                         if hash_count % 1000 == 0:
                             self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
                         hash_count += 1
@@ -1353,9 +1383,11 @@ class Miner:
             # Validate hash_hex and target lengths before comparison
             if len(hash_hex) != 64:
                 self.log.error(f"Invalid hash_hex length: {len(hash_hex)} (expected 64 hex chars)")
+                hash_count += 1
                 continue
             if len(target) != 64:
                 self.log.error(f"Invalid target length: {len(target)} (expected 64 hex chars)")
+                hash_count += 1
                 continue
             
             # Compare numerically (not as strings!)
@@ -1364,6 +1396,7 @@ class Miner:
                 target_int = int(target, 16)
             except ValueError as e:
                 self.log.error(f"Failed to convert hash_hex or target to int: {e}")
+                hash_count += 1
                 continue
             
             if hash_int < target_int:
