@@ -2,7 +2,15 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.23.0)
+## Latest Changes (v2.24.0)
+- **Critical Pool Subscribe Fix**: Fixed issue where pool sends multiple messages in same buffer
+  - Pool may send `mining.notify` message immediately after `mining.subscribe` response
+  - Code now searches through all received lines to find the correct subscribe response
+  - Looks for response with `result` field and `id: 1` (matching our request)
+  - Ignores `mining.notify` messages that may come first
+  - Pool connection should now work reliably even when pool sends multiple messages
+
+## Previous Changes (v2.23.0)
 - **Critical CUDA Fix**: Fixed CUDA initialization error
   - Replaced `cuda.is_initialized()` with try/except pattern (function doesn't exist in all PyCUDA versions)
   - CUDA now initializes correctly on all PyCUDA versions

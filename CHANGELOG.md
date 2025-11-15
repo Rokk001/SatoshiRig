@@ -5,6 +5,22 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.24.0] - 2025-01-27
+
+### Fixed
+- **Critical: Pool Subscribe Multiple Messages**: Fixed issue where pool sends multiple messages (subscribe response + mining.notify) in same buffer
+  - Pool may send `mining.notify` message immediately after `mining.subscribe` response
+  - Code now searches through all received lines to find the correct subscribe response
+  - Looks for response with `result` field and `id: 1` (matching our request)
+  - Ignores `mining.notify` messages that may come first
+  - Prevents "Invalid subscribe response: missing 'result' field" error
+
+### Changed
+- **Pool Subscribe**: Improved message parsing to handle multiple messages from pool
+  - Reads all lines from buffer until subscribe response is found
+  - Continues reading if only `mining.notify` messages are received
+  - Better error messages showing what was actually received
+
 ## [2.23.0] - 2025-01-27
 
 ### Fixed

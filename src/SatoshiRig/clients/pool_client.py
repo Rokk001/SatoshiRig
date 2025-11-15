@@ -51,27 +51,70 @@ class PoolClient :
             
             # Read response - may need multiple recv() calls for large responses
             # Pool responses can be > 1024 bytes, so we need to read until we get a complete line
+            # Pool may also send mining.notify messages immediately after subscribe response
             buffer = bytearray()
             max_buffer_size = 64 * 1024  # 64KB max
             self.sock.settimeout(self.timeout)
             
+            # Read until we have at least one complete line
+            # Pool may send multiple messages (subscribe response + mining.notify), so we need to read all
+            lines_read = 0
             while True:
                 chunk = self.sock.recv(4096)
                 if not chunk:
                     raise ConnectionError("Connection closed by server during subscribe")
                 buffer.extend(chunk)
                 
-                # Check if we have a complete line (ends with \n)
-                if b'\n' in buffer:
-                    break
+                # Count how many complete lines we have
+                lines_read = buffer.count(b'\n')
+                
+                # If we have at least one complete line, check if we have the subscribe response
+                if lines_read > 0:
+                    # Decode and check if we already have the subscribe response
+                    temp_lines = buffer.decode('utf-8', errors='replace').split('\n')
+                    found_subscribe_response = False
+                    for line in temp_lines:
+                        if not line.strip():
+                            continue
+                        try:
+                            parsed = json.loads(line)
+                            if 'result' in parsed and parsed.get('id') == 1:
+                                found_subscribe_response = True
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                    
+                    # If we found the subscribe response, we can stop reading
+                    if found_subscribe_response:
+                        break
                 
                 # Prevent buffer overflow
                 if len(buffer) > max_buffer_size:
                     raise RuntimeError(f"Subscribe response too large (>{max_buffer_size} bytes)")
             
-            # Decode and parse first line
+            # Decode and parse all lines - pool may send multiple messages
             lines = buffer.decode('utf-8', errors='replace').split('\n')
-            response = json.loads(lines[0])
+            
+            # Find the subscribe response (should have 'result' field and 'id': 1)
+            # Pool may also send mining.notify messages, so we need to find the right one
+            response = None
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    parsed = json.loads(line)
+                    # Subscribe response should have 'result' field and 'id' matching our request (1)
+                    if 'result' in parsed and parsed.get('id') == 1:
+                        response = parsed
+                        break
+                except json.JSONDecodeError:
+                    # Skip invalid JSON lines
+                    continue
+            
+            if response is None:
+                # Log all received lines for debugging
+                self.logger.error(f"No valid subscribe response found. Received lines: {lines[:5]}...")
+                raise RuntimeError(f"Invalid subscribe response: no response with 'result' field found. First line: {lines[0][:200] if lines else 'empty'}")
             
             if 'result' not in response:
                 raise RuntimeError(f"Invalid subscribe response: missing 'result' field: {response}")
