@@ -63,11 +63,26 @@ class PoolClient :
                 # Read until we have at least one complete line
                 # Pool may send multiple messages (subscribe response + mining.notify), so we need to read all
                 lines_read = 0
+                read_timeout_count = 0
+                max_timeout_retries = 3  # Allow a few timeouts if we're getting partial data
                 while True:
-                    chunk = self.sock.recv(4096)
-                    if not chunk:
-                        raise ConnectionError("Connection closed by server during subscribe")
-                    buffer.extend(chunk)
+                    try:
+                        chunk = self.sock.recv(4096)
+                        if not chunk:
+                            raise ConnectionError("Connection closed by server during subscribe")
+                        buffer.extend(chunk)
+                        read_timeout_count = 0  # Reset timeout counter on successful read
+                    except socket.timeout:
+                        # If we have at least one complete line, try to parse it
+                        if buffer.count(b'\n') > 0:
+                            self.logger.debug(f"Timeout during subscribe read, but have {buffer.count(b'\n')} complete lines, attempting to parse")
+                            break
+                        read_timeout_count += 1
+                        if read_timeout_count >= max_timeout_retries:
+                            raise TimeoutError(f"Subscribe read timed out after {max_timeout_retries} attempts")
+                        # Wait a bit and retry
+                        time.sleep(0.1)
+                        continue
                     
                     # Count how many complete lines we have
                     lines_read = buffer.count(b'\n')

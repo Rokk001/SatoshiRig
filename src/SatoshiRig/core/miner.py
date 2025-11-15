@@ -407,18 +407,51 @@ class Miner:
                     and self.state.extranonce2_size is not None
                 )
             
+            # If pool is connected but subscription is not yet available, wait a bit
+            # This handles the case where connect_to_pool_only() is still running
+            if pool_already_connected and not has_subscription:
+                self.log.info("Pool connected but subscription not yet available, waiting for connect_to_pool_only() to complete...")
+                # Wait up to 5 seconds for subscription to become available
+                for wait_iteration in range(10):
+                    time.sleep(0.5)
+                    with self.state._lock:
+                        has_subscription = (
+                            self.state.extranonce1 is not None 
+                            and self.state.extranonce2_size is not None
+                        )
+                    if has_subscription:
+                        self.log.info("Subscription now available, proceeding with mining startup")
+                        break
+                    # Check if socket is still connected
+                    with self.pool._socket_lock:
+                        if self.pool.sock is None or self.pool.sock.fileno() == -1:
+                            self.log.warning("Socket disconnected while waiting for subscription, will reconnect")
+                            pool_already_connected = False
+                            break
+            
             if pool_already_connected and has_subscription:
                 # Reuse existing connection
                 self.log.info("Pool already connected and subscribed, reusing existing connection")
                 self.log.debug(f"Existing extranonce1: {self.state.extranonce1}, extranonce2_size: {self.state.extranonce2_size}")
                 update_pool_status(True, self.pool.host, self.pool.port)
                 # Just authorize if needed (authorize is idempotent)
-                self.pool.authorize(self.wallet)
+                try:
+                    self.pool.authorize(self.wallet)
+                except Exception as auth_error:
+                    self.log.warning(f"Authorization failed (may already be authorized): {auth_error}")
                 self.log.info("Authorized, waiting for mining notification...")
             else:
                 # Need to connect and subscribe
                 self.log.info("Connecting to pool %s:%s...", self.pool.host, self.pool.port)
                 self.log.debug(f"Pool connection parameters: host={self.pool.host}, port={self.pool.port}")
+                # Close existing connection if any (in case it's in a bad state)
+                with self.pool._socket_lock:
+                    if self.pool.sock:
+                        try:
+                            self.pool.sock.close()
+                            self.pool.sock = None
+                        except Exception:
+                            pass
                 self.pool.connect()
                 self.log.info("Connected to pool, subscribing...")
                 self.log.debug("Sending subscription request to pool")

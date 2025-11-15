@@ -2,7 +2,22 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.5)
+## Latest Changes (v2.25.6)
+- **Critical Fix: Subscribe Timeout When Starting Miner**: Fixed timeout error when `miner.start()` is called while `connect_to_pool_only()` is still running
+  - `miner.start()` now waits up to 5 seconds for subscription to become available if pool is already connected
+  - Prevents "Subscribe failed: timed out" errors when starting miner immediately after pool connection
+  - Handles race condition where `connect_to_pool_only()` and `miner.start()` run simultaneously
+  - Improved socket state checking during subscription wait
+- **Robust Subscribe Timeout Handling**: Enhanced `pool_client.subscribe()` to handle timeouts gracefully
+  - If complete lines are already in buffer when timeout occurs, parsing is attempted instead of failing
+  - Allows up to 3 timeout retries before raising error
+  - Better handling of partial data reads during subscription
+- **Improved Connection State Management**: Better handling of existing connections in `miner.start()`
+  - Closes existing connection before reconnecting if it's in a bad state
+  - Waits for `connect_to_pool_only()` to complete subscription before attempting new subscription
+  - More robust authorization error handling
+
+## Previous Changes (v2.25.5)
 - **Enhanced Mining Logging**: Comprehensive logging for debugging CPU/GPU mining issues
   - Detailed notification thread logging with iteration counts and socket status
   - Initial state logging when mining loop starts (nbits, prev_hash, extranonce, etc.)

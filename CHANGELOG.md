@@ -5,6 +5,31 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.6] - 2025-01-27
+
+### Fixed
+- **Critical: Subscribe Timeout When Starting Miner**: Fixed timeout error when `miner.start()` is called while `connect_to_pool_only()` is still running
+  - `miner.start()` now waits up to 5 seconds for subscription to become available if pool is already connected
+  - Prevents "Subscribe failed: timed out" errors when starting miner immediately after pool connection
+  - Handles race condition where `connect_to_pool_only()` and `miner.start()` run simultaneously
+  - Improved socket state checking during subscription wait
+
+### Changed
+- **Robust Subscribe Timeout Handling**: Enhanced `pool_client.subscribe()` to handle timeouts gracefully
+  - If complete lines are already in buffer when timeout occurs, parsing is attempted instead of failing
+  - Allows up to 3 timeout retries before raising error
+  - Better handling of partial data reads during subscription
+- **Improved Connection State Management**: Better handling of existing connections in `miner.start()`
+  - Closes existing connection before reconnecting if it's in a bad state
+  - Waits for `connect_to_pool_only()` to complete subscription before attempting new subscription
+  - More robust authorization error handling
+
+### Technical Details
+- `miner.start()` now checks subscription availability in 0.5s intervals for up to 5 seconds
+- Socket connection state is verified during subscription wait
+- `subscribe()` method handles `socket.timeout` exceptions gracefully
+- Timeout counter is reset on successful reads
+
 ## [2.25.5] - 2025-01-27
 
 ### Added
