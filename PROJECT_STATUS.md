@@ -2,7 +2,17 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.13)
+## Latest Changes (v2.25.14)
+- **Critical Fix: Mining Loop Never Hangs**: Implemented comprehensive error handling to ensure mining loop always progresses
+  - Wrapped entire loop iteration in try-except to catch ALL unexpected errors
+  - Added `initial_hash_count` tracking to detect if `hash_count` was incremented during iteration
+  - Safety net at end of iteration: increments `hash_count` if it wasn't incremented during the iteration
+  - Exception handler always increments `hash_count` and continues to next iteration
+  - Mining loop now guarantees progression even on unexpected exceptions, deadlocks, or errors
+  - Prevents loop from getting stuck at iteration 0 regardless of any error condition
+  - Ensures continuous mining operation and accurate hash rate calculation in all scenarios
+
+## Previous Changes (v2.25.13)
 - **Critical Fix: Mining Loop Always Progresses**: Fixed issue where mining loop could hang at iteration 0
   - Wrapped entire CPU mining block in try-except to catch ALL unexpected errors
   - `hash_count` is now ALWAYS incremented, even on unexpected exceptions

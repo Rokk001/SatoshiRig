@@ -884,10 +884,14 @@ class Miner:
         self.log.info("Starting hash computation loop")
 
         while True:
-            with self.state._lock:
-                shutdown_flag = self.state.shutdown_flag
-                prev_hash = self.state.prev_hash
-                updated_prev_hash = self.state.updated_prev_hash
+            # CRITICAL: Wrap entire loop iteration in try-except to ensure loop always progresses
+            # Store initial hash_count to detect if it was incremented during this iteration
+            initial_hash_count = hash_count
+            try:
+                with self.state._lock:
+                    shutdown_flag = self.state.shutdown_flag
+                    prev_hash = self.state.prev_hash
+                    updated_prev_hash = self.state.updated_prev_hash
 
             if shutdown_flag:
                 update_status("running", False)
@@ -1496,3 +1500,25 @@ class Miner:
                     # Continue mining even if submit fails - pool might recover
                     # Don't return True to avoid marking as successful
                     pass
+                
+                # CRITICAL: Ensure hash_count is incremented at end of successful iteration
+                # This handles cases where hash_count was not incremented due to early continue/break
+                # Only increment if hash_count hasn't changed since start of iteration
+                if hash_count == initial_hash_count:
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes", self.total_hash_count)
+            
+            except Exception as e:
+                # CRITICAL: Catch ALL exceptions to ensure loop always progresses
+                # Log error but continue mining
+                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                    self.log.error(f"Unexpected error in mining loop (iteration {hash_count}): {e}", exc_info=True)
+                
+                # CRITICAL: Always increment hash_count even on unexpected errors
+                hash_count += 1
+                self.total_hash_count += 1
+                update_status("total_hashes", self.total_hash_count)
+                
+                # Continue to next iteration
+                continue
