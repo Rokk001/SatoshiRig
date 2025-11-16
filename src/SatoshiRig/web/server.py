@@ -2503,7 +2503,8 @@ INDEX_HTML = """
         </div>
     </div>
     <script>
-        const socket = io();
+        // Force polling transport to avoid websocket upgrade failures behind proxies
+        const socket = io({ transports: ['polling'] });
         let startTime = null;
         let autoRefresh = true;
         let refreshInterval = null;
