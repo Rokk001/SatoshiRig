@@ -81,11 +81,12 @@ class Miner:
         self._notification_thread_running = False  # Flag for notification thread
         self.log.debug("Miner.__init__: _notification_thread_running=False")
         # Verbose logging is enabled if explicitly set OR if logger is at DEBUG level
-        self._verbose_logging = (
-            self.cfg.get("logging", {}).get("verbose", False)
-            or self.log.isEnabledFor(logging.DEBUG)
+        self._verbose_logging = self.cfg.get("logging", {}).get(
+            "verbose", False
+        ) or self.log.isEnabledFor(logging.DEBUG)
+        self.log.debug(
+            f"Miner.__init__: _verbose_logging={self._verbose_logging} (from config: {self.cfg.get('logging', {}).get('verbose', False)}, DEBUG enabled: {self.log.isEnabledFor(logging.DEBUG)})"
         )
-        self.log.debug(f"Miner.__init__: _verbose_logging={self._verbose_logging} (from config: {self.cfg.get('logging', {}).get('verbose', False)}, DEBUG enabled: {self.log.isEnabledFor(logging.DEBUG)})")
 
         # Initialize GPU miner if configured
         self.log.debug("Miner.__init__: calling _initialize_gpu_miner()")
@@ -1535,7 +1536,7 @@ class Miner:
                     self._verbose_logging,
                     "LOOP: merkle_root initialized to None",
                 )
-                
+
                 _vlog(self.log, self._verbose_logging, "LOOP: building coinbase")
                 coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
                 _vlog(
@@ -1772,7 +1773,9 @@ class Miner:
                         f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}, nbits={current_nbits}, prev_hash={current_prev_hash[:16] if current_prev_hash else None}..."
                     )
                     # Add INFO log immediately after iteration log to track progress
-                    self.log.info(f"After iteration log: hash_count={hash_count}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}, entering GPU/CPU mining check")
+                    self.log.info(
+                        f"After iteration log: hash_count={hash_count}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}, entering GPU/CPU mining check"
+                    )
 
                 # Use GPU miner if enabled and available
                 _vlog(
@@ -1781,7 +1784,9 @@ class Miner:
                     f"LOOP: checking GPU mining: gpu_mining_enabled={gpu_mining_enabled}, gpu_miner={self.gpu_miner is not None}",
                 )
                 if hash_count % 1000 == 0:
-                    self.log.info(f"Before GPU check: gpu_mining_enabled={gpu_mining_enabled}, gpu_miner={self.gpu_miner is not None}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}")
+                    self.log.info(
+                        f"Before GPU check: gpu_mining_enabled={gpu_mining_enabled}, gpu_miner={self.gpu_miner is not None}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}"
+                    )
                 if gpu_mining_enabled and self.gpu_miner:
                     _vlog(
                         self.log,
@@ -2008,13 +2013,23 @@ class Miner:
                     f"LOOP: checking CPU mining: cpu_mining_enabled={cpu_mining_enabled}",
                 )
                 if hash_count % 1000 == 0:
-                    self.log.info(f"Before CPU check: cpu_mining_enabled={cpu_mining_enabled}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}")
+                    self.log.info(
+                        f"Before CPU check: cpu_mining_enabled={cpu_mining_enabled}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}"
+                    )
                 if cpu_mining_enabled:
                     _vlog(
                         self.log,
                         self._verbose_logging,
                         "LOOP: CPU mining enabled, entering CPU mining block",
                     )
+                    # Quick INFO-level instrumentation to verify CPU branch is entered
+                    try:
+                        self.log.info(
+                            "CPU mining enabled: entering CPU mining block (hash_count=%s)",
+                            hash_count,
+                        )
+                    except Exception:
+                        pass
                     # Wrap entire CPU mining block in try-except to ensure hash_count is always incremented
                     try:
                         _vlog(
@@ -2078,6 +2093,16 @@ class Miner:
                                 self._verbose_logging,
                                 f"LOOP: cpu_nonce_hex generated: {cpu_nonce_hex} (length={len(cpu_nonce_hex) if cpu_nonce_hex else 0})",
                             )
+                            # Small INFO probe for early iterations
+                            try:
+                                if hash_count < 5:
+                                    self.log.info(
+                                        "CPU nonce generated: %s (counter=%s)",
+                                        cpu_nonce_hex,
+                                        self.cpu_nonce_counter,
+                                    )
+                            except Exception:
+                                pass
                         except (ValueError, TypeError) as e:
                             _vlog(
                                 self.log,
@@ -2142,6 +2167,15 @@ class Miner:
                                 self._verbose_logging,
                                 f"LOOP: _build_block_header returned, block_header length={len(block_header) if block_header else 0}",
                             )
+                            # INFO probe: show block_header length for the first iteration
+                            try:
+                                if hash_count == 0:
+                                    self.log.info(
+                                        "CPU block_header length=%s",
+                                        len(block_header) if block_header else None,
+                                    )
+                            except Exception:
+                                pass
                             if hash_count == 0:
                                 self.log.debug(
                                     f"CPU mining: _build_block_header returned, block_header length={len(block_header) if block_header else None}"
@@ -2245,6 +2279,14 @@ class Miner:
                                     self._verbose_logging,
                                     f"LOOP: block_header_bytes length={len(block_header_bytes)}",
                                 )
+                                try:
+                                    if hash_count < 5:
+                                        self.log.info(
+                                            "CPU block_header unhexlified, bytes=%s",
+                                            len(block_header_bytes),
+                                        )
+                                except Exception:
+                                    pass
                             except binascii.Error as e:
                                 _vlog(
                                     self.log,
@@ -2315,6 +2357,14 @@ class Miner:
                                     self._verbose_logging,
                                     f"LOOP: cpu_hash_hex (binary) length={len(cpu_hash_hex)}",
                                 )
+                                try:
+                                    if hash_count < 5:
+                                        self.log.info(
+                                            "CPU hash computed (raw length=%s)",
+                                            len(cpu_hash_hex),
+                                        )
+                                except Exception:
+                                    pass
                                 # Convert hash to little-endian hex for Bitcoin (#69)
                                 # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
                                 _vlog(
