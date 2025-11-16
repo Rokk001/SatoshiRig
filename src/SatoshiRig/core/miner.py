@@ -1528,6 +1528,14 @@ class Miner:
                     )
                     continue
 
+                # Initialize merkle_root to None before calculation
+                merkle_root = None
+                _vlog(
+                    self.log,
+                    self._verbose_logging,
+                    "LOOP: merkle_root initialized to None",
+                )
+                
                 _vlog(self.log, self._verbose_logging, "LOOP: building coinbase")
                 coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
                 _vlog(
@@ -1763,6 +1771,8 @@ class Miner:
                     self.log.info(
                         f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}, nbits={current_nbits}, prev_hash={current_prev_hash[:16] if current_prev_hash else None}..."
                     )
+                    # Add INFO log immediately after iteration log to track progress
+                    self.log.info(f"After iteration log: hash_count={hash_count}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}, entering GPU/CPU mining check")
 
                 # Use GPU miner if enabled and available
                 _vlog(
@@ -1770,6 +1780,8 @@ class Miner:
                     self._verbose_logging,
                     f"LOOP: checking GPU mining: gpu_mining_enabled={gpu_mining_enabled}, gpu_miner={self.gpu_miner is not None}",
                 )
+                if hash_count % 1000 == 0:
+                    self.log.info(f"Before GPU check: gpu_mining_enabled={gpu_mining_enabled}, gpu_miner={self.gpu_miner is not None}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}")
                 if gpu_mining_enabled and self.gpu_miner:
                     _vlog(
                         self.log,
@@ -1995,6 +2007,8 @@ class Miner:
                     self._verbose_logging,
                     f"LOOP: checking CPU mining: cpu_mining_enabled={cpu_mining_enabled}",
                 )
+                if hash_count % 1000 == 0:
+                    self.log.info(f"Before CPU check: cpu_mining_enabled={cpu_mining_enabled}, merkle_root={'defined' if 'merkle_root' in locals() else 'NOT DEFINED'}")
                 if cpu_mining_enabled:
                     _vlog(
                         self.log,

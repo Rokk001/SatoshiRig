@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.19] - 2025-01-27
+
+### Added
+- **Mining Loop Debugging Improvements**: Added critical initialization and INFO-level logging to diagnose mining loop issues
+  - Initialize `merkle_root = None` at the start of each loop iteration to prevent NameError
+  - Added INFO-level logs immediately after "Mining iteration 0" to track loop progress
+  - Added INFO-level logs before GPU/CPU mining checks to identify where loop hangs
+  - Logs now show whether `merkle_root` is defined at critical points
+  - Helps diagnose why mining loop stops after "Mining iteration 0"
+  - Ensures loop can progress even if merkle_root calculation fails
+
 ## [2.25.18] - 2025-01-27
 
 ### Fixed

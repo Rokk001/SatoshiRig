@@ -2,7 +2,16 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.18)
+## Latest Changes (v2.25.19)
+- **Mining Loop Debugging Improvements**: Added critical initialization and INFO-level logging to diagnose mining loop issues
+  - Initialize `merkle_root = None` at the start of each loop iteration to prevent NameError
+  - Added INFO-level logs immediately after "Mining iteration 0" to track loop progress
+  - Added INFO-level logs before GPU/CPU mining checks to identify where loop hangs
+  - Logs now show whether `merkle_root` is defined at critical points
+  - Helps diagnose why mining loop stops after "Mining iteration 0"
+  - Ensures loop can progress even if merkle_root calculation fails
+
+## Previous Changes (v2.25.18)
 - **Fixed Verbose Logging Implementation**: Corrected `_vlog()` function to properly check DEBUG logging level
   - `_vlog()` now checks both `verbose` flag AND `logger.isEnabledFor(logging.DEBUG)`
   - Logs will now appear when DEBUG level is enabled, regardless of `verbose` config flag
