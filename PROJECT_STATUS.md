@@ -2,7 +2,14 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.14)
+## Latest Changes (v2.25.15)
+- **Critical Fix: Fixed Syntax Error in Mining Loop**: Corrected indentation error that prevented the application from starting
+  - Fixed indentation for all lines within the try-except block wrapping the mining loop
+  - All code from lines 896-1511 is now correctly indented within the try block
+  - Application now compiles and runs without syntax errors
+  - Mining loop error handling is now fully functional
+
+## Previous Changes (v2.25.14)
 - **Critical Fix: Mining Loop Never Hangs**: Implemented comprehensive error handling to ensure mining loop always progresses
   - Wrapped entire loop iteration in try-except to catch ALL unexpected errors
   - Added `initial_hash_count` tracking to detect if `hash_count` was incremented during iteration

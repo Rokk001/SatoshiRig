@@ -893,243 +893,243 @@ class Miner:
                     prev_hash = self.state.prev_hash
                     updated_prev_hash = self.state.updated_prev_hash
 
-            if shutdown_flag:
-                update_status("running", False)
-                update_pool_status(False)
-                self._running = False
-                # Cleanup GPU miner before shutdown
-                if self.gpu_miner:
-                    try:
-                        self.gpu_miner.cleanup()
-                        self.log.debug("GPU miner cleaned up on shutdown")
-                    except Exception as e:
-                        self.log.debug(f"Error cleaning up GPU miner on shutdown: {e}")
-                break
+                if shutdown_flag:
+                    update_status("running", False)
+                    update_pool_status(False)
+                    self._running = False
+                    # Cleanup GPU miner before shutdown
+                    if self.gpu_miner:
+                        try:
+                            self.gpu_miner.cleanup()
+                            self.log.debug("GPU miner cleaned up on shutdown")
+                        except Exception as e:
+                            self.log.debug(f"Error cleaning up GPU miner on shutdown: {e}")
+                    break
 
-            if prev_hash != updated_prev_hash:
-                self.log.info("New block detected: %s", prev_hash)
-                with self.state._lock:
-                    best_diff = self.state.height_to_best_difficulty.get(
-                        current_height + 1, 0
-                    )
-                self.log.info(
-                    "Best difficulty for height %s was %s",
-                    current_height + 1,
-                    best_diff,
-                )
-
-                with self.state._lock:
-                    self.state.updated_prev_hash = prev_hash
-                    self.state.height_to_best_difficulty[-1] = -1
-
-                # Update job_id from new block with timeout handling
-                try:
-                    responses = self.pool.read_notify()
-                    if (
-                        responses
-                        and len(responses) > 0
-                        and "params" in responses[0]
-                        and len(responses[0]["params"]) > 0
-                    ):
-                        # Update ALL fields from new block notification, not just job_id
-                        with self.state._lock:
-                            if len(responses[0]["params"]) >= 9:
-                                (
-                                    self.state.job_id,
-                                    self.state.prev_hash,
-                                    self.state.coinbase_part1,
-                                    self.state.coinbase_part2,
-                                    self.state.merkle_branch,
-                                    self.state.version,
-                                    self.state.nbits,
-                                    self.state.ntime,
-                                    self.state.clean_jobs,
-                                ) = responses[0]["params"]
-                                self.state.updated_prev_hash = self.state.prev_hash
-                            else:
-                                # Fallback: only update job_id if full params not available
-                                self.state.job_id = responses[0]["params"][0]
-                        update_status("job_id", self.state.job_id)
-                except Exception as e:
-                    self.log.error(
-                        f"Failed to read notify for new block: {e}, continuing with existing job_id"
-                    )
-
-                # Update current_height for new block (with timeout handling)
-                try:
-                    current_height = self._get_current_block_height()
+                if prev_hash != updated_prev_hash:
+                    self.log.info("New block detected: %s", prev_hash)
                     with self.state._lock:
-                        self.state.height_to_best_difficulty[current_height + 1] = 0
-                        self.state.local_height = current_height
-                except Exception as e:
-                    self.log.error(
-                        f"Failed to get current block height: {e}, using previous height"
-                    )
-                    # Use previous height as fallback
-                    with self.state._lock:
-                        current_height = (
-                            self.state.local_height
-                            if self.state.local_height > 0
-                            else 0
+                        best_diff = self.state.height_to_best_difficulty.get(
+                            current_height + 1, 0
                         )
-                    # current_height is now always defined
-                    with self.state._lock:
-                        self.state.height_to_best_difficulty[current_height + 1] = 0
+                    self.log.info(
+                        "Best difficulty for height %s was %s",
+                        current_height + 1,
+                        best_diff,
+                    )
 
-                self.log.info("Mining block height %s", current_height + 1)
-                update_status("current_height", current_height + 1)
+                    with self.state._lock:
+                        self.state.updated_prev_hash = prev_hash
+                        self.state.height_to_best_difficulty[-1] = -1
+
+                    # Update job_id from new block with timeout handling
+                    try:
+                        responses = self.pool.read_notify()
+                        if (
+                            responses
+                            and len(responses) > 0
+                            and "params" in responses[0]
+                            and len(responses[0]["params"]) > 0
+                        ):
+                            # Update ALL fields from new block notification, not just job_id
+                            with self.state._lock:
+                                if len(responses[0]["params"]) >= 9:
+                                    (
+                                        self.state.job_id,
+                                        self.state.prev_hash,
+                                        self.state.coinbase_part1,
+                                        self.state.coinbase_part2,
+                                        self.state.merkle_branch,
+                                        self.state.version,
+                                        self.state.nbits,
+                                        self.state.ntime,
+                                        self.state.clean_jobs,
+                                    ) = responses[0]["params"]
+                                    self.state.updated_prev_hash = self.state.prev_hash
+                                else:
+                                    # Fallback: only update job_id if full params not available
+                                    self.state.job_id = responses[0]["params"][0]
+                        update_status("job_id", self.state.job_id)
+                    except Exception as e:
+                        self.log.error(
+                            f"Failed to read notify for new block: {e}, continuing with existing job_id"
+                        )
+
+                    # Update current_height for new block (with timeout handling)
+                    try:
+                        current_height = self._get_current_block_height()
+                        with self.state._lock:
+                            self.state.height_to_best_difficulty[current_height + 1] = 0
+                            self.state.local_height = current_height
+                    except Exception as e:
+                        self.log.error(
+                            f"Failed to get current block height: {e}, using previous height"
+                        )
+                        # Use previous height as fallback
+                        with self.state._lock:
+                            current_height = (
+                                self.state.local_height
+                                if self.state.local_height > 0
+                                else 0
+                            )
+                        # current_height is now always defined
+                        with self.state._lock:
+                            self.state.height_to_best_difficulty[current_height + 1] = 0
+
+                    self.log.info("Mining block height %s", current_height + 1)
+                    update_status("current_height", current_height + 1)
                 
-                # Reset extranonce2 counter for new block (#67)
-                if hasattr(self, 'extranonce2_counter'):
-                    self.extranonce2_counter = 0
-                    self.log.debug("Reset extranonce2_counter for new block")
-                
-                # Handle clean_jobs flag (#57)
-                with self.state._lock:
-                    clean_jobs = self.state.clean_jobs
-                if clean_jobs:
-                    self.log.info("clean_jobs flag set - resetting mining state for new block")
-                    # Reset nonce counters when clean_jobs is True
-                    self.cpu_nonce_counter = 0
-                    self.gpu_nonce_counter = 0
+                    # Reset extranonce2 counter for new block (#67)
                     if hasattr(self, 'extranonce2_counter'):
                         self.extranonce2_counter = 0
+                        self.log.debug("Reset extranonce2_counter for new block")
                 
-                # Continue loop instead of recursive call to avoid stack overflow
-                # This will trigger recalculation of merkle_root, target, etc. in the loop
-                continue
+                    # Handle clean_jobs flag (#57)
+                    with self.state._lock:
+                        clean_jobs = self.state.clean_jobs
+                    if clean_jobs:
+                        self.log.info("clean_jobs flag set - resetting mining state for new block")
+                        # Reset nonce counters when clean_jobs is True
+                        self.cpu_nonce_counter = 0
+                        self.gpu_nonce_counter = 0
+                        if hasattr(self, 'extranonce2_counter'):
+                            self.extranonce2_counter = 0
+                
+                    # Continue loop instead of recursive call to avoid stack overflow
+                    # This will trigger recalculation of merkle_root, target, etc. in the loop
+                    continue
 
-            # Check CPU/GPU mining flags (thread-safe access)
-            with self._config_lock:
-                cpu_mining_enabled = self.cfg.get("compute", {}).get(
-                    "cpu_mining_enabled", True
-                )
-                gpu_mining_enabled = self.cfg.get("compute", {}).get(
-                    "gpu_mining_enabled", False
-                )
-                gpu_utilization_percent = self.cfg.get("compute", {}).get(
-                    "gpu_utilization_percent", 100
-                )
+                # Check CPU/GPU mining flags (thread-safe access)
+                with self._config_lock:
+                    cpu_mining_enabled = self.cfg.get("compute", {}).get(
+                        "cpu_mining_enabled", True
+                    )
+                    gpu_mining_enabled = self.cfg.get("compute", {}).get(
+                        "gpu_mining_enabled", False
+                    )
+                    gpu_utilization_percent = self.cfg.get("compute", {}).get(
+                        "gpu_utilization_percent", 100
+                    )
 
-            # Recalculate target, target_int, target_difficulty dynamically (#44, #50-55)
-            with self.state._lock:
-                nbits = self.state.nbits
+                # Recalculate target, target_int, target_difficulty dynamically (#44, #50-55)
+                with self.state._lock:
+                    nbits = self.state.nbits
             
-            if not nbits or len(nbits) < 2:
-                self.log.warning(f"Invalid nbits in loop: {nbits}, skipping iteration")
-                hash_count += 1
-                continue
-            
-            try:
-                exponent = int(nbits[:2], 16)
-                if exponent < 3 or exponent > 255:
-                    self.log.warning(f"Invalid nbits exponent in loop: {exponent}, skipping iteration")
+                if not nbits or len(nbits) < 2:
+                    self.log.warning(f"Invalid nbits in loop: {nbits}, skipping iteration")
                     hash_count += 1
                     continue
-                target = (nbits[2:] + "00" * (exponent - 3)).zfill(64)
-                target_int = int(target, 16)
-                reference_diff = int(
-                    "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
-                )
-                target_difficulty = reference_diff / target_int if target_int > 0 else 0
-            except (ValueError, IndexError, ZeroDivisionError) as e:
-                self.log.warning(f"Failed to recalculate target in loop: {e}, skipping iteration")
-                hash_count += 1
-                continue
-
-            # Recalculate merkle_root dynamically (#64)
-            with self.state._lock:
-                coinbase_part1 = self.state.coinbase_part1
-                extranonce1 = self.state.extranonce1
-                coinbase_part2 = self.state.coinbase_part2
-                merkle_branch = self.state.merkle_branch
-                extranonce2_size = self.state.extranonce2_size
             
-            # Log state values every 1000 iterations
-            if hash_count % 1000 == 0:
-                self.log.debug(f"Mining state check: coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, extranonce2_size={extranonce2_size}, merkle_branch length={len(merkle_branch) if merkle_branch else 0}")
-            
-            # Generate new extranonce2 for this iteration (#67)
-            if not hasattr(self, 'extranonce2_counter'):
-                self.extranonce2_counter = 0
-            extranonce2 = hex(self.extranonce2_counter)[2:].zfill(2 * extranonce2_size)
-            self.extranonce2_counter = (self.extranonce2_counter + 1) % (2**(8 * extranonce2_size))
-            
-            # Build coinbase and calculate merkle_root
-            if not coinbase_part1 or not extranonce1 or not coinbase_part2:
-                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                    self.log.warning(f"Missing coinbase fields (iteration {hash_count}): coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, skipping iteration")
-                hash_count += 1
-                continue
-            
-            coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
-            try:
-                coinbase_hash_bin = hashlib.sha256(
-                    hashlib.sha256(binascii.unhexlify(coinbase)).digest()
-                ).digest()
-            except (binascii.Error, ValueError) as e:
-                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                    self.log.error(f"Failed to unhexlify coinbase (iteration {hash_count}): {e}, coinbase length={len(coinbase)}")
-                hash_count += 1
-                continue
-            
-            merkle_root_bin = coinbase_hash_bin
-            if merkle_branch:
-                for branch_hash in merkle_branch:
-                    try:
-                        branch_hash_bytes = binascii.unhexlify(branch_hash)
-                        merkle_root_bin = hashlib.sha256(
-                            hashlib.sha256(
-                                merkle_root_bin + branch_hash_bytes
-                            ).digest()
-                        ).digest()
-                    except (binascii.Error, ValueError) as e:
-                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                            self.log.error(f"Failed to unhexlify merkle branch hash (iteration {hash_count}): {e}, branch_hash={branch_hash[:50] if branch_hash else None}")
-                        # Skip this branch hash and continue with next
-                        continue
-            
-            # Convert merkle_root to little-endian hex for block header
-            try:
-                merkle_root_hex = binascii.hexlify(merkle_root_bin).decode()
-                merkle_root = self._hex_to_little_endian(merkle_root_hex, 64)
-            except (ValueError, TypeError, AttributeError) as e:
-                if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                    self.log.error(f"Failed to convert merkle_root to little-endian (iteration {hash_count}): {e}")
-                hash_count += 1
-                continue
-
-            # Initialize hash_hex to None (will be set by GPU or CPU mining)
-            hash_hex = None
-            nonce_hex = None
-            cpu_hash_hex = None
-            cpu_nonce_hex = None
-
-            # Log mining iteration start (every 1000 iterations to avoid spam)
-            if hash_count % 1000 == 0:
-                with self.state._lock:
-                    current_nbits = self.state.nbits
-                    current_prev_hash = self.state.prev_hash
-                self.log.info(f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}, nbits={current_nbits}, prev_hash={current_prev_hash[:16] if current_prev_hash else None}...")
-
-            # Use GPU miner if enabled and available
-            if gpu_mining_enabled and self.gpu_miner:
-                # GPU mining: test multiple nonces in parallel batch
-                with self.state._lock:
-                    prev_hash = self.state.prev_hash
-                    ntime = self.state.ntime
-                    nbits = self.state.nbits
                 try:
-                    block_header_base = self._build_block_header(
-                        prev_hash, merkle_root, ntime, nbits, "00000000"
+                    exponent = int(nbits[:2], 16)
+                    if exponent < 3 or exponent > 255:
+                        self.log.warning(f"Invalid nbits exponent in loop: {exponent}, skipping iteration")
+                        hash_count += 1
+                        continue
+                    target = (nbits[2:] + "00" * (exponent - 3)).zfill(64)
+                    target_int = int(target, 16)
+                    reference_diff = int(
+                        "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
                     )
-                    block_header_hex = block_header_base
-                    if hash_count % 1000 == 0:
-                        self.log.debug(f"GPU mining: block_header_base built, length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
-                except (RuntimeError, ValueError) as e:
+                    target_difficulty = reference_diff / target_int if target_int > 0 else 0
+                except (ValueError, IndexError, ZeroDivisionError) as e:
+                    self.log.warning(f"Failed to recalculate target in loop: {e}, skipping iteration")
+                    hash_count += 1
+                    continue
+
+                # Recalculate merkle_root dynamically (#64)
+                with self.state._lock:
+                    coinbase_part1 = self.state.coinbase_part1
+                    extranonce1 = self.state.extranonce1
+                    coinbase_part2 = self.state.coinbase_part2
+                    merkle_branch = self.state.merkle_branch
+                    extranonce2_size = self.state.extranonce2_size
+            
+                # Log state values every 1000 iterations
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"Mining state check: coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, extranonce2_size={extranonce2_size}, merkle_branch length={len(merkle_branch) if merkle_branch else 0}")
+            
+                # Generate new extranonce2 for this iteration (#67)
+                if not hasattr(self, 'extranonce2_counter'):
+                    self.extranonce2_counter = 0
+                extranonce2 = hex(self.extranonce2_counter)[2:].zfill(2 * extranonce2_size)
+                self.extranonce2_counter = (self.extranonce2_counter + 1) % (2**(8 * extranonce2_size))
+            
+                # Build coinbase and calculate merkle_root
+                if not coinbase_part1 or not extranonce1 or not coinbase_part2:
                     if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                        self.log.error(f"GPU mining: Failed to build block header (iteration {hash_count}): {e}")
-                        self.log.error(f"GPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0})")
+                        self.log.warning(f"Missing coinbase fields (iteration {hash_count}): coinbase_part1={'present' if coinbase_part1 else 'MISSING'}, extranonce1={'present' if extranonce1 else 'MISSING'}, coinbase_part2={'present' if coinbase_part2 else 'MISSING'}, skipping iteration")
+                    hash_count += 1
+                    continue
+            
+                coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
+                try:
+                    coinbase_hash_bin = hashlib.sha256(
+                        hashlib.sha256(binascii.unhexlify(coinbase)).digest()
+                    ).digest()
+                except (binascii.Error, ValueError) as e:
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"Failed to unhexlify coinbase (iteration {hash_count}): {e}, coinbase length={len(coinbase)}")
+                    hash_count += 1
+                    continue
+            
+                merkle_root_bin = coinbase_hash_bin
+                if merkle_branch:
+                    for branch_hash in merkle_branch:
+                        try:
+                            branch_hash_bytes = binascii.unhexlify(branch_hash)
+                            merkle_root_bin = hashlib.sha256(
+                                hashlib.sha256(
+                                    merkle_root_bin + branch_hash_bytes
+                                ).digest()
+                            ).digest()
+                        except (binascii.Error, ValueError) as e:
+                            if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                self.log.error(f"Failed to unhexlify merkle branch hash (iteration {hash_count}): {e}, branch_hash={branch_hash[:50] if branch_hash else None}")
+                            # Skip this branch hash and continue with next
+                            continue
+            
+                # Convert merkle_root to little-endian hex for block header
+                try:
+                    merkle_root_hex = binascii.hexlify(merkle_root_bin).decode()
+                    merkle_root = self._hex_to_little_endian(merkle_root_hex, 64)
+                except (ValueError, TypeError, AttributeError) as e:
+                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                        self.log.error(f"Failed to convert merkle_root to little-endian (iteration {hash_count}): {e}")
+                    hash_count += 1
+                    continue
+
+                # Initialize hash_hex to None (will be set by GPU or CPU mining)
+                hash_hex = None
+                nonce_hex = None
+                cpu_hash_hex = None
+                cpu_nonce_hex = None
+
+                # Log mining iteration start (every 1000 iterations to avoid spam)
+                if hash_count % 1000 == 0:
+                    with self.state._lock:
+                        current_nbits = self.state.nbits
+                        current_prev_hash = self.state.prev_hash
+                    self.log.info(f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}, nbits={current_nbits}, prev_hash={current_prev_hash[:16] if current_prev_hash else None}...")
+
+                # Use GPU miner if enabled and available
+                if gpu_mining_enabled and self.gpu_miner:
+                    # GPU mining: test multiple nonces in parallel batch
+                    with self.state._lock:
+                        prev_hash = self.state.prev_hash
+                        ntime = self.state.ntime
+                        nbits = self.state.nbits
+                        try:
+                            block_header_base = self._build_block_header(
+                                prev_hash, merkle_root, ntime, nbits, "00000000"
+                            )
+                            block_header_hex = block_header_base
+                            if hash_count % 1000 == 0:
+                                self.log.debug(f"GPU mining: block_header_base built, length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
+                        except (RuntimeError, ValueError) as e:
+                            if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                self.log.error(f"GPU mining: Failed to build block header (iteration {hash_count}): {e}")
+                                self.log.error(f"GPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0})")
                     hash_hex = None
                     nonce_hex = None
                     # Continue to CPU mining if enabled
@@ -1155,47 +1155,58 @@ class Miner:
                         hash_count += 1
                         self.total_hash_count += 1
                         update_status("total_hashes", self.total_hash_count)
-                else:
-                    try:
-                        batch_start_time = time.time()
-                        result = self.gpu_miner.hash_block_header(
-                            block_header_hex,
-                            num_nonces=num_nonces_per_batch,
-                            start_nonce=self.gpu_nonce_counter,
-                        )
-                        batch_duration = time.time() - batch_start_time
-                        if hash_count % 1000 == 0:
-                            self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}, hash_count={hash_count}")
+                    else:
+                        try:
+                            batch_start_time = time.time()
+                            result = self.gpu_miner.hash_block_header(
+                                block_header_hex,
+                                num_nonces=num_nonces_per_batch,
+                                start_nonce=self.gpu_nonce_counter,
+                            )
+                            batch_duration = time.time() - batch_start_time
+                            if hash_count % 1000 == 0:
+                                self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}, hash_count={hash_count}")
 
-                        if result and isinstance(result, tuple) and len(result) == 2:
-                            hash_hex, best_nonce = result
-                            # Convert GPU hash to little-endian for Bitcoin (#69)
-                            # GPU returns hash in big-endian (from binascii.hexlify), but Bitcoin uses little-endian
-                            hash_hex = self._hex_to_little_endian(hash_hex, 64)
-                            # Convert nonce to little-endian hex format for Bitcoin block header (#72)
-                            nonce_hex = self._int_to_little_endian_hex(best_nonce, 4)
-                            # Update hash count based on actual batch size
-                            hash_count += num_nonces_per_batch
-                            self.total_hash_count += num_nonces_per_batch
-                            update_status("total_hashes", self.total_hash_count)
-                            # Increment nonce counter for next batch (FIX: use start_nonce + num_nonces, not best_nonce + 1)
-                            # This ensures we don't skip any nonce ranges
-                            self.gpu_nonce_counter = (
-                                self.gpu_nonce_counter + num_nonces_per_batch
-                            ) % (2**32)
+                            if result and isinstance(result, tuple) and len(result) == 2:
+                                hash_hex, best_nonce = result
+                                # Convert GPU hash to little-endian for Bitcoin (#69)
+                                # GPU returns hash in big-endian (from binascii.hexlify), but Bitcoin uses little-endian
+                                hash_hex = self._hex_to_little_endian(hash_hex, 64)
+                                # Convert nonce to little-endian hex format for Bitcoin block header (#72)
+                                nonce_hex = self._int_to_little_endian_hex(best_nonce, 4)
+                                # Update hash count based on actual batch size
+                                hash_count += num_nonces_per_batch
+                                self.total_hash_count += num_nonces_per_batch
+                                update_status("total_hashes", self.total_hash_count)
+                                # Increment nonce counter for next batch (FIX: use start_nonce + num_nonces, not best_nonce + 1)
+                                # This ensures we don't skip any nonce ranges
+                                self.gpu_nonce_counter = (
+                                    self.gpu_nonce_counter + num_nonces_per_batch
+                                ) % (2**32)
 
-                            # Time-Slicing: Pause based on GPU utilization percentage
-                            if gpu_utilization_percent < 100 and batch_duration > 0:
-                                # Calculate pause time: if 20% utilization, pause 80% of the time
-                                # Formula: pause_time = batch_duration * (100 - utilization) / utilization
-                                pause_ratio = (
-                                    100 - gpu_utilization_percent
-                                ) / gpu_utilization_percent
-                                pause_time = batch_duration * pause_ratio
-                                if pause_time > 0:
-                                    time.sleep(pause_time)
-                        else:
-                            # GPU returned None - CPU mining will handle it if enabled
+                                # Time-Slicing: Pause based on GPU utilization percentage
+                                if gpu_utilization_percent < 100 and batch_duration > 0:
+                                    # Calculate pause time: if 20% utilization, pause 80% of the time
+                                    # Formula: pause_time = batch_duration * (100 - utilization) / utilization
+                                    pause_ratio = (
+                                        100 - gpu_utilization_percent
+                                    ) / gpu_utilization_percent
+                                    pause_time = batch_duration * pause_ratio
+                                    if pause_time > 0:
+                                        time.sleep(pause_time)
+                            else:
+                                # GPU returned None - CPU mining will handle it if enabled
+                                hash_hex = None
+                                nonce_hex = None
+                                # CRITICAL: If CPU mining is also disabled, increment hash_count here
+                                if not cpu_mining_enabled:
+                                    hash_count += 1
+                                    self.total_hash_count += 1
+                                    update_status("total_hashes", self.total_hash_count)
+                        except Exception as e:
+                            # GPU error - CPU mining will handle it if enabled
+                            if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                self.log.error(f"GPU mining error (iteration {hash_count}): {e}, CPU mining will continue if enabled", exc_info=True)
                             hash_hex = None
                             nonce_hex = None
                             # CRITICAL: If CPU mining is also disabled, increment hash_count here
@@ -1203,80 +1214,57 @@ class Miner:
                                 hash_count += 1
                                 self.total_hash_count += 1
                                 update_status("total_hashes", self.total_hash_count)
-                    except Exception as e:
-                        # GPU error - CPU mining will handle it if enabled
-                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                            self.log.error(f"GPU mining error (iteration {hash_count}): {e}, CPU mining will continue if enabled", exc_info=True)
-                        hash_hex = None
-                        nonce_hex = None
-                        # CRITICAL: If CPU mining is also disabled, increment hash_count here
-                        if not cpu_mining_enabled:
+                else:
+                    # GPU mining disabled or not available
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"GPU mining: DISABLED or NOT AVAILABLE (iteration {hash_count}, enabled={gpu_mining_enabled}, miner={self.gpu_miner is not None})")
+                    hash_hex = None
+                    nonce_hex = None
+
+                # CPU mining (runs independently if enabled, regardless of GPU status)
+                # This should run even when GPU is disabled or not available
+                if cpu_mining_enabled:
+                    # Wrap entire CPU mining block in try-except to ensure hash_count is always incremented
+                    try:
+                        # CPU mining (original implementation)
+                        with self.state._lock:
+                            prev_hash = self.state.prev_hash
+                            ntime = self.state.ntime
+                            nbits = self.state.nbits
+                        # Use sequential nonce counter for better coverage (cycles through 2^32)
+                        # Convert to little-endian hex format for Bitcoin block header (#72)
+                        try:
+                            cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
+                        except (ValueError, TypeError) as e:
+                            if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                self.log.error(f"Failed to convert nonce to little-endian (iteration {hash_count}): {e}")
                             hash_count += 1
                             self.total_hash_count += 1
                             update_status("total_hashes", self.total_hash_count)
-            else:
-                # GPU mining disabled or not available
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"GPU mining: DISABLED or NOT AVAILABLE (iteration {hash_count}, enabled={gpu_mining_enabled}, miner={self.gpu_miner is not None})")
-                hash_hex = None
-                nonce_hex = None
-
-            # CPU mining (runs independently if enabled, regardless of GPU status)
-            # This should run even when GPU is disabled or not available
-            if cpu_mining_enabled:
-                # Wrap entire CPU mining block in try-except to ensure hash_count is always incremented
-                try:
-                    # CPU mining (original implementation)
-                    with self.state._lock:
-                        prev_hash = self.state.prev_hash
-                        ntime = self.state.ntime
-                        nbits = self.state.nbits
-                    # Use sequential nonce counter for better coverage (cycles through 2^32)
-                    # Convert to little-endian hex format for Bitcoin block header (#72)
-                    try:
-                        cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
-                    except (ValueError, TypeError) as e:
-                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                            self.log.error(f"Failed to convert nonce to little-endian (iteration {hash_count}): {e}")
-                        hash_count += 1
-                        self.total_hash_count += 1
-                        update_status("total_hashes", self.total_hash_count)
-                        continue
-                    self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
-                    if hash_count % 1000 == 0:
-                        self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
-                    try:
-                        if hash_count == 0:
-                            self.log.debug(f"CPU mining: About to call _build_block_header with prev_hash={prev_hash[:16] if prev_hash else None}..., merkle_root={merkle_root[:16] if merkle_root else None}..., ntime={ntime}, nbits={nbits}, nonce_hex={cpu_nonce_hex}")
-                        block_header = self._build_block_header(
-                            prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
-                        )
-                        if hash_count == 0:
-                            self.log.debug(f"CPU mining: _build_block_header returned, block_header length={len(block_header) if block_header else None}")
+                            continue
+                        self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
                         if hash_count % 1000 == 0:
-                            self.log.debug(f"CPU mining: block header built successfully, length={len(block_header)}")
-                    except (RuntimeError, ValueError) as e:
-                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                            self.log.error(f"CPU mining: Failed to build block header (iteration {hash_count}): {e}")
-                            self.log.error(f"CPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0}), nonce_hex={cpu_nonce_hex}")
-                        cpu_hash_hex = None
-                        cpu_nonce_hex = None
-                        block_header = None
-                    
-                    if block_header is None:
-                        # Block header build failed, skip this iteration
-                        cpu_hash_hex = None
-                        cpu_nonce_hex = None
-                        # Still increment hash_count to ensure loop progresses
-                        hash_count += 1
-                        self.total_hash_count += 1
-                        update_status("total_hashes", self.total_hash_count)
-                    else:
+                            self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}, nonce_counter={self.cpu_nonce_counter}")
                         try:
-                            block_header_bytes = binascii.unhexlify(block_header)
-                        except binascii.Error as e:
+                            if hash_count == 0:
+                                self.log.debug(f"CPU mining: About to call _build_block_header with prev_hash={prev_hash[:16] if prev_hash else None}..., merkle_root={merkle_root[:16] if merkle_root else None}..., ntime={ntime}, nbits={nbits}, nonce_hex={cpu_nonce_hex}")
+                            block_header = self._build_block_header(
+                                prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
+                            )
+                            if hash_count == 0:
+                                self.log.debug(f"CPU mining: _build_block_header returned, block_header length={len(block_header) if block_header else None}")
+                            if hash_count % 1000 == 0:
+                                self.log.debug(f"CPU mining: block header built successfully, length={len(block_header)}")
+                        except (RuntimeError, ValueError) as e:
                             if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                                self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
+                                self.log.error(f"CPU mining: Failed to build block header (iteration {hash_count}): {e}")
+                                self.log.error(f"CPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0}), nonce_hex={cpu_nonce_hex}")
+                            cpu_hash_hex = None
+                            cpu_nonce_hex = None
+                            block_header = None
+                        
+                        if block_header is None:
+                            # Block header build failed, skip this iteration
                             cpu_hash_hex = None
                             cpu_nonce_hex = None
                             # Still increment hash_count to ensure loop progresses
@@ -1284,230 +1272,242 @@ class Miner:
                             self.total_hash_count += 1
                             update_status("total_hashes", self.total_hash_count)
                         else:
-                            cpu_hash_hex = hashlib.sha256(
-                                hashlib.sha256(block_header_bytes).digest()
-                            ).digest()
-                            # Convert hash to little-endian hex for Bitcoin (#69)
-                            # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
                             try:
-                                cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
-                                cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
-                            except (ValueError, TypeError, AttributeError) as e:
+                                block_header_bytes = binascii.unhexlify(block_header)
+                            except binascii.Error as e:
                                 if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                                    self.log.error(f"Failed to convert CPU hash to little-endian (iteration {hash_count}): {e}")
+                                    self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
+                                cpu_hash_hex = None
+                                cpu_nonce_hex = None
+                                # Still increment hash_count to ensure loop progresses
                                 hash_count += 1
                                 self.total_hash_count += 1
                                 update_status("total_hashes", self.total_hash_count)
-                                continue
-                            if hash_count % 1000 == 0:
-                                self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
-                            hash_count += 1
-                            self.total_hash_count += 1
-                            update_status("total_hashes", self.total_hash_count)
-                except Exception as e:
-                    # Catch ALL unexpected errors in CPU mining to ensure loop continues
-                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                        self.log.error(f"CPU mining: Unexpected error (iteration {hash_count}): {e}", exc_info=True)
+                            else:
+                                cpu_hash_hex = hashlib.sha256(
+                                    hashlib.sha256(block_header_bytes).digest()
+                                ).digest()
+                                # Convert hash to little-endian hex for Bitcoin (#69)
+                                # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
+                                try:
+                                    cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
+                                    cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
+                                except (ValueError, TypeError, AttributeError) as e:
+                                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                                        self.log.error(f"Failed to convert CPU hash to little-endian (iteration {hash_count}): {e}")
+                                    hash_count += 1
+                                    self.total_hash_count += 1
+                                    update_status("total_hashes", self.total_hash_count)
+                                    continue
+                                if hash_count % 1000 == 0:
+                                    self.log.debug(f"CPU mining: hash computed (little-endian)={cpu_hash_hex[:32]}..., target={target[:32]}...")
+                                hash_count += 1
+                                self.total_hash_count += 1
+                                update_status("total_hashes", self.total_hash_count)
+                    except Exception as e:
+                        # Catch ALL unexpected errors in CPU mining to ensure loop continues
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.error(f"CPU mining: Unexpected error (iteration {hash_count}): {e}", exc_info=True)
+                        cpu_hash_hex = None
+                        cpu_nonce_hex = None
+                        # CRITICAL: Always increment hash_count even on unexpected errors
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
+                else:
+                    # CPU mining disabled
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
                     cpu_hash_hex = None
                     cpu_nonce_hex = None
-                    # CRITICAL: Always increment hash_count even on unexpected errors
-                    hash_count += 1
-                    self.total_hash_count += 1
-                    update_status("total_hashes", self.total_hash_count)
-            else:
-                # CPU mining disabled
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
-                cpu_hash_hex = None
-                cpu_nonce_hex = None
-                # CRITICAL: If CPU mining is disabled and GPU is also disabled/not available, increment hash_count
-                if not (gpu_mining_enabled and self.gpu_miner):
-                    hash_count += 1
-                    self.total_hash_count += 1
-                    update_status("total_hashes", self.total_hash_count)
+                    # CRITICAL: If CPU mining is disabled and GPU is also disabled/not available, increment hash_count
+                    if not (gpu_mining_enabled and self.gpu_miner):
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
             
-            # If GPU didn't produce a hash, use CPU hash
-            # This code should run regardless of whether CPU mining is enabled or disabled
-            if hash_hex is None:
-                hash_hex = cpu_hash_hex
-                nonce_hex = cpu_nonce_hex
-            # If both produced hashes, use the better one (lower value = better)
-            elif cpu_hash_hex is not None:
-                try:
-                    if int(cpu_hash_hex, 16) < int(hash_hex, 16):
-                        hash_hex = cpu_hash_hex
-                        nonce_hex = cpu_nonce_hex
-                except ValueError:
-                    # If comparison fails, use GPU hash (or CPU if GPU is None)
-                    if hash_hex is None:
-                        hash_hex = cpu_hash_hex
-                        nonce_hex = cpu_nonce_hex
-
-            # Calculate hash rate in every iteration (before checking hash_hex/nonce_hex)
-            # This ensures hash rate is always updated, even if hash_hex is None
-            elapsed = time.time() - start_time
-            if elapsed > 0:
-                hash_rate = hash_count / elapsed
-                update_status("hash_rate", hash_rate)
-                # Log hash rate every 1000 hashes in DEBUG mode
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
-
-            # Update hash_count even if no mining was performed (#51)
-            if hash_hex is None or nonce_hex is None:
-                if not cpu_mining_enabled and not (gpu_mining_enabled and self.gpu_miner):
-                    # Both CPU and GPU mining disabled - pause briefly
-                    self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
-                    hash_count += 1  # Still count iteration
-                    time.sleep(0.1)
-                    continue
-                else:
-                    # Mining enabled but no hash produced (error case)
-                    # Log detailed error with state information
-                    self.log.error(
-                        f"hash_hex or nonce_hex not defined - this should not happen! "
-                        f"hash_hex={hash_hex}, nonce_hex={nonce_hex}, "
-                        f"cpu_hash_hex={cpu_hash_hex}, cpu_nonce_hex={cpu_nonce_hex}, "
-                        f"cpu_enabled={cpu_mining_enabled}, gpu_enabled={gpu_mining_enabled}, "
-                        f"gpu_miner={self.gpu_miner is not None}"
-                    )
-                    hash_count += 1  # Still count iteration
-                    continue
-
-            if hash_hex.startswith(prefix_zeros):
-                self.log.debug(
-                    "Candidate hash %s at height %s (nonce=%s)", hash_hex, current_height + 1, nonce_hex
-                )
-                update_status("last_hash", hash_hex)
-            try:
-                this_hash_int = int(hash_hex, 16)
-            except ValueError as e:
-                self.log.error(
-                    f"Invalid hash_hex format: {hash_hex[:50]}... Error: {e}"
-                )
-                hash_count += 1
-                continue
-
-            # Prevent division by zero (hash_hex could be all zeros)
-            if this_hash_int == 0:
-                self.log.warning(
-                    f"Hash is zero, skipping difficulty calculation: {hash_hex}"
-                )
-                hash_count += 1
-                continue
-
-            # Bitcoin reference difficulty: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
-            reference_diff = int(
-                "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
-            )
-            difficulty = reference_diff / this_hash_int
-
-            # Ensure height_to_best_difficulty key exists (may have changed if new block detected)
-            with self.state._lock:
-                if (current_height + 1) not in self.state.height_to_best_difficulty:
-                    self.state.height_to_best_difficulty[current_height + 1] = 0
-
-                if (
-                    self.state.height_to_best_difficulty[current_height + 1]
-                    < difficulty
-                ):
-                    self.state.height_to_best_difficulty[current_height + 1] = (
-                        difficulty
-                    )
-                update_status("best_difficulty", difficulty)
-
-            # Validate hash_hex and target lengths before comparison
-            if len(hash_hex) != 64:
-                self.log.error(f"Invalid hash_hex length: {len(hash_hex)} (expected 64 hex chars)")
-                hash_count += 1
-                continue
-            if len(target) != 64:
-                self.log.error(f"Invalid target length: {len(target)} (expected 64 hex chars)")
-                hash_count += 1
-                continue
-            
-            # Compare numerically (not as strings!)
-            try:
-                hash_int = int(hash_hex, 16)
-                target_int = int(target, 16)
-            except ValueError as e:
-                self.log.error(f"Failed to convert hash_hex or target to int: {e}")
-                hash_count += 1
-                continue
-            
-            if hash_int < target_int:
-                self.log.info("Block solved at height %s", current_height + 1)
-                self.log.info("Block hash %s", hash_hex)
-                
-                # CRITICAL FIX (#73, #74, #75): Capture all values from current iteration BEFORE state might change
-                # These values are from the iteration where the solution was found
-                solution_extranonce2 = extranonce2  # From line 772 - current iteration (not from state!)
-                solution_merkle_root = merkle_root   # From line 798 - current iteration
-                
-                # Get stable state values (these should not change during a job, but capture them atomically)
-                with self.state._lock:
-                    solution_job_id = self.state.job_id
-                    solution_ntime = self.state.ntime
-                    solution_prev_hash = self.state.prev_hash
-                    solution_nbits = self.state.nbits
-                    solution_version = self.state.version
-                
-                # Build block header for logging (reconstruct from solution)
-                solution_block_header = self._build_block_header(
-                    solution_prev_hash, solution_merkle_root, solution_ntime, solution_nbits, nonce_hex
-                )
-                self.log.debug("Blockheader %s", solution_block_header)
-                self.log.debug(f"Solution details: nonce={nonce_hex}, extranonce2={solution_extranonce2}, ntime={solution_ntime}, job_id={solution_job_id}")
-                try:
-                    self.log.debug(f"Submitting solution to pool: wallet={self.wallet[:10]}..., job_id={solution_job_id}, nonce={nonce_hex}, extranonce2={solution_extranonce2}")
-                    ret = self.pool.submit(
-                        self.wallet, solution_job_id, solution_extranonce2, solution_ntime, nonce_hex
-                    )
-                    self.log.info("Pool response %s", ret)
-                    self.log.debug(f"Full pool response: {ret}")
+                # If GPU didn't produce a hash, use CPU hash
+                # This code should run regardless of whether CPU mining is enabled or disabled
+                if hash_hex is None:
+                    hash_hex = cpu_hash_hex
+                    nonce_hex = cpu_nonce_hex
+                # If both produced hashes, use the better one (lower value = better)
+                elif cpu_hash_hex is not None:
                     try:
-                        from ..web import add_share
+                        if int(cpu_hash_hex, 16) < int(hash_hex, 16):
+                            hash_hex = cpu_hash_hex
+                            nonce_hex = cpu_nonce_hex
+                    except ValueError:
+                        # If comparison fails, use GPU hash (or CPU if GPU is None)
+                        if hash_hex is None:
+                            hash_hex = cpu_hash_hex
+                            nonce_hex = cpu_nonce_hex
 
-                        response_str = (
-                            ret.decode() if isinstance(ret, bytes) else str(ret)
+                # Calculate hash rate in every iteration (before checking hash_hex/nonce_hex)
+                # This ensures hash rate is always updated, even if hash_hex is None
+                elapsed = time.time() - start_time
+                if elapsed > 0:
+                    hash_rate = hash_count / elapsed
+                    update_status("hash_rate", hash_rate)
+                    # Log hash rate every 1000 hashes in DEBUG mode
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
+
+                # Update hash_count even if no mining was performed (#51)
+                if hash_hex is None or nonce_hex is None:
+                    if not cpu_mining_enabled and not (gpu_mining_enabled and self.gpu_miner):
+                        # Both CPU and GPU mining disabled - pause briefly
+                        self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
+                        hash_count += 1  # Still count iteration
+                        time.sleep(0.1)
+                        continue
+                    else:
+                        # Mining enabled but no hash produced (error case)
+                        # Log detailed error with state information
+                        self.log.error(
+                            f"hash_hex or nonce_hex not defined - this should not happen! "
+                            f"hash_hex={hash_hex}, nonce_hex={nonce_hex}, "
+                            f"cpu_hash_hex={cpu_hash_hex}, cpu_nonce_hex={cpu_nonce_hex}, "
+                            f"cpu_enabled={cpu_mining_enabled}, gpu_enabled={gpu_mining_enabled}, "
+                            f"gpu_miner={self.gpu_miner is not None}"
                         )
-                        # Parse pool response more carefully
-                        # Valid responses: {"result":true} or {"result": true} or {"error":null,"result":true}
-                        # Invalid: {"error":"...","result":false} or {"result":false}
-                        import json
-                        try:
-                            response_json = json.loads(response_str)
-                            accepted = response_json.get("result") is True and response_json.get("error") is None
-                        except (json.JSONDecodeError, AttributeError, TypeError):
-                            # Fallback to string matching if JSON parsing fails
-                            accepted = (
-                                '"result":true' in response_str
-                                or '"result": true' in response_str
-                            ) and '"error"' not in response_str.lower()
-                        add_share(accepted, response_str)
-                    except (
-                        ImportError,
-                        AttributeError,
-                        UnicodeDecodeError,
-                        Exception,
-                    ) as e:
-                        # Log but don't fail if web module is not available or share tracking fails
-                        self.log.debug(f"Could not track share: {e}")
-                        pass
-                    return True
-                except (ConnectionError, RuntimeError, Exception) as e:
-                    self.log.error(f"Failed to submit share to pool: {e}")
-                    # Continue mining even if submit fails - pool might recover
-                    # Don't return True to avoid marking as successful
-                    pass
-                
-                # CRITICAL: Ensure hash_count is incremented at end of successful iteration
-                # This handles cases where hash_count was not incremented due to early continue/break
-                # Only increment if hash_count hasn't changed since start of iteration
-                if hash_count == initial_hash_count:
+                        hash_count += 1  # Still count iteration
+                        continue
+
+                if hash_hex.startswith(prefix_zeros):
+                    self.log.debug(
+                        "Candidate hash %s at height %s (nonce=%s)", hash_hex, current_height + 1, nonce_hex
+                    )
+                    update_status("last_hash", hash_hex)
+                try:
+                    this_hash_int = int(hash_hex, 16)
+                except ValueError as e:
+                    self.log.error(
+                        f"Invalid hash_hex format: {hash_hex[:50]}... Error: {e}"
+                    )
                     hash_count += 1
-                    self.total_hash_count += 1
-                    update_status("total_hashes", self.total_hash_count)
+                    continue
+
+                # Prevent division by zero (hash_hex could be all zeros)
+                if this_hash_int == 0:
+                    self.log.warning(
+                        f"Hash is zero, skipping difficulty calculation: {hash_hex}"
+                    )
+                    hash_count += 1
+                    continue
+
+                # Bitcoin reference difficulty: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+                reference_diff = int(
+                    "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
+                )
+                difficulty = reference_diff / this_hash_int
+
+                # Ensure height_to_best_difficulty key exists (may have changed if new block detected)
+                with self.state._lock:
+                    if (current_height + 1) not in self.state.height_to_best_difficulty:
+                        self.state.height_to_best_difficulty[current_height + 1] = 0
+
+                    if (
+                        self.state.height_to_best_difficulty[current_height + 1]
+                        < difficulty
+                    ):
+                        self.state.height_to_best_difficulty[current_height + 1] = (
+                            difficulty
+                        )
+                    update_status("best_difficulty", difficulty)
+
+                # Validate hash_hex and target lengths before comparison
+                if len(hash_hex) != 64:
+                    self.log.error(f"Invalid hash_hex length: {len(hash_hex)} (expected 64 hex chars)")
+                    hash_count += 1
+                    continue
+                if len(target) != 64:
+                    self.log.error(f"Invalid target length: {len(target)} (expected 64 hex chars)")
+                    hash_count += 1
+                    continue
+                
+                # Compare numerically (not as strings!)
+                try:
+                    hash_int = int(hash_hex, 16)
+                    target_int = int(target, 16)
+                except ValueError as e:
+                    self.log.error(f"Failed to convert hash_hex or target to int: {e}")
+                    hash_count += 1
+                    continue
+                
+                if hash_int < target_int:
+                    self.log.info("Block solved at height %s", current_height + 1)
+                    self.log.info("Block hash %s", hash_hex)
+                    
+                    # CRITICAL FIX (#73, #74, #75): Capture all values from current iteration BEFORE state might change
+                    # These values are from the iteration where the solution was found
+                    solution_extranonce2 = extranonce2  # From line 772 - current iteration (not from state!)
+                    solution_merkle_root = merkle_root   # From line 798 - current iteration
+                    
+                    # Get stable state values (these should not change during a job, but capture them atomically)
+                    with self.state._lock:
+                        solution_job_id = self.state.job_id
+                        solution_ntime = self.state.ntime
+                        solution_prev_hash = self.state.prev_hash
+                        solution_nbits = self.state.nbits
+                        solution_version = self.state.version
+                    
+                    # Build block header for logging (reconstruct from solution)
+                    solution_block_header = self._build_block_header(
+                        solution_prev_hash, solution_merkle_root, solution_ntime, solution_nbits, nonce_hex
+                    )
+                    self.log.debug("Blockheader %s", solution_block_header)
+                    self.log.debug(f"Solution details: nonce={nonce_hex}, extranonce2={solution_extranonce2}, ntime={solution_ntime}, job_id={solution_job_id}")
+                    try:
+                        self.log.debug(f"Submitting solution to pool: wallet={self.wallet[:10]}..., job_id={solution_job_id}, nonce={nonce_hex}, extranonce2={solution_extranonce2}")
+                        ret = self.pool.submit(
+                            self.wallet, solution_job_id, solution_extranonce2, solution_ntime, nonce_hex
+                        )
+                        self.log.info("Pool response %s", ret)
+                        self.log.debug(f"Full pool response: {ret}")
+                        try:
+                            from ..web import add_share
+
+                            response_str = (
+                                ret.decode() if isinstance(ret, bytes) else str(ret)
+                            )
+                            # Parse pool response more carefully
+                            # Valid responses: {"result":true} or {"result": true} or {"error":null,"result":true}
+                            # Invalid: {"error":"...","result":false} or {"result":false}
+                            import json
+                            try:
+                                response_json = json.loads(response_str)
+                                accepted = response_json.get("result") is True and response_json.get("error") is None
+                            except (json.JSONDecodeError, AttributeError, TypeError):
+                                # Fallback to string matching if JSON parsing fails
+                                accepted = (
+                                    '"result":true' in response_str
+                                    or '"result": true' in response_str
+                                ) and '"error"' not in response_str.lower()
+                            add_share(accepted, response_str)
+                        except (
+                            ImportError,
+                            AttributeError,
+                            UnicodeDecodeError,
+                            Exception,
+                        ) as e:
+                            # Log but don't fail if web module is not available or share tracking fails
+                            self.log.debug(f"Could not track share: {e}")
+                            pass
+                        return True
+                    except (ConnectionError, RuntimeError, Exception) as e:
+                        self.log.error(f"Failed to submit share to pool: {e}")
+                        # Continue mining even if submit fails - pool might recover
+                        # Don't return True to avoid marking as successful
+                        pass
+                    
+                    # CRITICAL: Ensure hash_count is incremented at end of successful iteration
+                    # This handles cases where hash_count was not incremented due to early continue/break
+                    # Only increment if hash_count hasn't changed since start of iteration
+                    if hash_count == initial_hash_count:
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
             
             except Exception as e:
                 # CRITICAL: Catch ALL exceptions to ensure loop always progresses

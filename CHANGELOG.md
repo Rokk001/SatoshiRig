@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.15] - 2025-01-27
+
+### Fixed
+- **Critical: Fixed Syntax Error in Mining Loop**: Corrected indentation error that prevented the application from starting
+  - Fixed indentation for all lines within the try-except block wrapping the mining loop
+  - All code from lines 896-1511 is now correctly indented within the try block
+  - Application now compiles and runs without syntax errors
+  - Mining loop error handling is now fully functional
+
 ## [2.25.14] - 2025-01-27
 
 ### Fixed
