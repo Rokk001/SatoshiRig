@@ -1,8 +1,23 @@
 # Project Status
 
-Updated: 2025-01-27
+Updated: 2025-11-20
 
-## Latest Changes (v2.25.22)
+## Latest Changes (v2.25.23)
+- **Comprehensive Verbose Logging for CPU Mining**: Added extensive verbose logging throughout the CPU mining loop to enable detailed debugging
+  - Logs every step in the CPU nonce iteration loop: nonce conversion, block header creation, SHA256 computation, hash comparison
+  - Logs block header base building with all parameters (prev_hash, merkle_root, ntime, nbits)
+  - Logs batch size, start nonce counter, and target value before each batch
+  - Logs each nonce iteration with detailed progress information
+  - Logs SHA256 intermediate and final hash computation steps
+  - Logs hash-to-integer conversion and target comparison for each nonce
+  - Logs best hash tracking and updates when a better hash is found
+  - Logs valid share detection and nonce counter updates
+  - Logs batch completion status (found/not found) and final hash/nonce values
+  - All verbose logs use `_vlog()` helper which respects both `verbose` config flag and DEBUG logging level
+  - Enables complete visibility into CPU mining operations when verbose logging is enabled
+  - Helps diagnose exactly where and why mining operations may stall or fail
+
+## Previous Changes (v2.25.22)
 - **CPU Mining Reliability**: Batched CPU hashing now retains the best candidate hash each batch, ensuring `hash_hex`/`nonce_hex` are always defined so the loop never stalls at the guard check.
 
 ## Previous Changes (v2.25.19)

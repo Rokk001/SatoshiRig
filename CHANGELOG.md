@@ -5,10 +5,27 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.23] - 2025-11-20
+
+### Added
+- **Comprehensive Verbose Logging for CPU Mining**: Added extensive verbose logging throughout the CPU mining loop to enable detailed debugging
+  - Logs every step in the CPU nonce iteration loop: nonce conversion, block header creation, SHA256 computation, hash comparison
+  - Logs block header base building with all parameters (prev_hash, merkle_root, ntime, nbits)
+  - Logs batch size, start nonce counter, and target value before each batch
+  - Logs each nonce iteration with detailed progress information
+  - Logs SHA256 intermediate and final hash computation steps
+  - Logs hash-to-integer conversion and target comparison for each nonce
+  - Logs best hash tracking and updates when a better hash is found
+  - Logs valid share detection and nonce counter updates
+  - Logs batch completion status (found/not found) and final hash/nonce values
+  - All verbose logs use `_vlog()` helper which respects both `verbose` config flag and DEBUG logging level
+  - Enables complete visibility into CPU mining operations when verbose logging is enabled
+  - Helps diagnose exactly where and why mining operations may stall or fail
+
 ## [2.25.22] - 2025-11-20
 
 ### Fixed
-- **CPU Mining Always Produces Hashes**: Batched CPU mining now tracks the best hash from each batch so `hash_hex`/`nonce_hex` are always defined, preventing the mining loop from stalling at the “hash_hex not defined” guard.
+- **CPU Mining Always Produces Hashes**: Batched CPU mining now tracks the best hash from each batch so `hash_hex`/`nonce_hex` are always defined, preventing the mining loop from stalling at the "hash_hex not defined" guard.
 
 ## [2.25.19] - 2025-01-27
 

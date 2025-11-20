@@ -2053,10 +2053,20 @@ class Miner:
                         )
 
                         # Build a block header base with nonce set to 00000000, then iterate a batch of nonces
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            f"LOOP: CPU building block header base with prev_hash={prev_hash[:16] if prev_hash else None}..., merkle_root={merkle_root[:16] if merkle_root else None}..., ntime={ntime}, nbits={nbits}",
+                        )
                         block_header_base = self._build_block_header(
                             prev_hash, merkle_root, ntime, nbits, "00000000"
                         )
                         block_header_hex = block_header_base
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            f"LOOP: CPU block header base built, length={len(block_header_hex) if block_header_hex else 0}, header_hex[:32]={block_header_hex[:32] if block_header_hex else None}...",
+                        )
 
                         num_nonces_per_batch = self.cfg.get("compute", {}).get(
                             "batch_size", 256
@@ -2066,6 +2076,11 @@ class Miner:
                             or num_nonces_per_batch <= 0
                         ):
                             num_nonces_per_batch = 1
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            f"LOOP: CPU batch size={num_nonces_per_batch}, start_nonce_counter={self.cpu_nonce_counter}, target_int={target_int}",
+                        )
 
                         if hash_count % 1000 == 0:
                             self.log.debug(
@@ -2076,42 +2091,112 @@ class Miner:
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
                         best_cpu_hash_int = None
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            f"LOOP: CPU initializing batch variables: cpu_found=False, cpu_hash_hex=None, cpu_nonce_hex=None, best_cpu_hash_int=None",
+                        )
 
                         for i_nonce in range(num_nonces_per_batch):
                             nonce_int = (self.cpu_nonce_counter + i_nonce) % (2**32)
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU nonce iteration {i_nonce}/{num_nonces_per_batch-1}, nonce_int={nonce_int}",
+                            )
                             try:
                                 trial_nonce_hex = self._int_to_little_endian_hex(
                                     nonce_int, 4
                                 )
-                            except (ValueError, TypeError):
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU nonce converted to hex: trial_nonce_hex={trial_nonce_hex}",
+                                )
+                            except (ValueError, TypeError) as e:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU nonce conversion failed: {type(e).__name__}: {e}, continuing",
+                                )
                                 continue
 
                             trial_block_header_hex = (
                                 block_header_hex[:-8] + trial_nonce_hex
                             )
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU trial block header created, length={len(trial_block_header_hex)}, header_hex[:32]={trial_block_header_hex[:32]}...",
+                            )
                             try:
                                 trial_block_header_bytes = binascii.unhexlify(
                                     trial_block_header_hex
                                 )
-                            except binascii.Error:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU block header unhexlified, bytes length={len(trial_block_header_bytes)}",
+                                )
+                            except binascii.Error as e:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU block header unhexlify failed: {e}, incrementing hash_count and continuing",
+                                )
                                 hash_count += 1
                                 self.total_hash_count += 1
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                "LOOP: CPU computing SHA256 intermediate hash",
+                            )
                             cpu_hash_intermediate = hashlib.sha256(
                                 trial_block_header_bytes
                             ).digest()
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU intermediate hash computed, digest length={len(cpu_hash_intermediate)}",
+                            )
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                "LOOP: CPU computing SHA256 final hash",
+                            )
                             cpu_hash_bin = hashlib.sha256(
                                 cpu_hash_intermediate
                             ).digest()
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU final hash computed, digest length={len(cpu_hash_bin)}",
+                            )
 
                             try:
                                 cpu_hash_big = binascii.hexlify(cpu_hash_bin).decode()
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash hexlified (big-endian), length={len(cpu_hash_big)}, hash[:32]={cpu_hash_big[:32]}...",
+                                )
                                 cpu_hash_little = self._hex_to_little_endian(
                                     cpu_hash_big, 64
                                 )
-                            except Exception:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash converted to little-endian, length={len(cpu_hash_little)}, hash[:32]={cpu_hash_little[:32]}...",
+                                )
+                            except Exception as e:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash conversion failed: {type(e).__name__}: {e}, incrementing hash_count and continuing",
+                                )
                                 hash_count += 1
                                 self.total_hash_count += 1
                                 update_status("total_hashes", self.total_hash_count)
@@ -2120,31 +2205,93 @@ class Miner:
                             hash_count += 1
                             self.total_hash_count += 1
                             update_status("total_hashes", self.total_hash_count)
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU hash_count incremented to {hash_count}, total_hash_count={self.total_hash_count}",
+                            )
 
                             try:
                                 cpu_hash_int = int(cpu_hash_little, 16)
-                            except ValueError:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash converted to int: cpu_hash_int={cpu_hash_int}",
+                                )
+                            except ValueError as e:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash int conversion failed: {e}, continuing",
+                                )
                                 continue
 
                             # Track the best CPU hash in the batch so we always have a fallback
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU checking if hash is best: cpu_hash_hex={'present' if cpu_hash_hex else 'None'}, best_cpu_hash_int={best_cpu_hash_int}, cpu_hash_int < best_cpu_hash_int={cpu_hash_int < best_cpu_hash_int if best_cpu_hash_int is not None else 'N/A'}",
+                            )
                             if (
                                 cpu_hash_hex is None
                                 or best_cpu_hash_int is None
                                 or cpu_hash_int < best_cpu_hash_int
                             ):
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU new best hash found: best_cpu_hash_int={best_cpu_hash_int} -> {cpu_hash_int}, updating cpu_hash_hex and cpu_nonce_hex",
+                                )
                                 best_cpu_hash_int = cpu_hash_int
                                 cpu_hash_hex = cpu_hash_little
                                 cpu_nonce_hex = trial_nonce_hex
+                            else:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU hash not better than best: cpu_hash_int={cpu_hash_int} >= best_cpu_hash_int={best_cpu_hash_int}",
+                                )
 
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU comparing hash to target: cpu_hash_int={cpu_hash_int} < target_int={target_int} = {cpu_hash_int < target_int}",
+                            )
                             if cpu_hash_int < target_int:
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU VALID SHARE FOUND! cpu_hash_int={cpu_hash_int} < target_int={target_int}, breaking loop",
+                                )
                                 cpu_found = True
                                 self.cpu_nonce_counter = (nonce_int + 1) % (2**32)
+                                _vlog(
+                                    self.log,
+                                    self._verbose_logging,
+                                    f"LOOP: CPU nonce_counter updated to {self.cpu_nonce_counter}",
+                                )
                                 break
 
                         if not cpu_found:
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU batch completed, no share found. Updating nonce_counter from {self.cpu_nonce_counter}",
+                            )
                             self.cpu_nonce_counter = (
                                 self.cpu_nonce_counter + num_nonces_per_batch
                             ) % (2**32)
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU nonce_counter updated to {self.cpu_nonce_counter}",
+                            )
+                        else:
+                            _vlog(
+                                self.log,
+                                self._verbose_logging,
+                                f"LOOP: CPU batch completed, valid share found! cpu_hash_hex={'present' if cpu_hash_hex else 'None'}, cpu_nonce_hex={'present' if cpu_nonce_hex else 'None'}",
+                            )
 
                     except Exception as e:
                         # Catch ALL unexpected errors in CPU mining to ensure loop continues
