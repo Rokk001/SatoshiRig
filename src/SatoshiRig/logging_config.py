@@ -14,14 +14,19 @@ def configure_logging(
     """
     # Resolve defaults from environment
     level = (level or os.environ.get("LOG_LEVEL") or "INFO").upper()
-    log_file = log_file or os.environ.get("LOG_FILE")
+    # All logging now goes to stdout/stderr (Docker logs). Ignore any log_file value.
+    if log_file or os.environ.get("LOG_FILE"):
+        logging.getLogger("SatoshiRig.logging_config").debug(
+            "File logging is disabled; all logs will be sent to stdout/stderr."
+        )
+    log_file = None
 
     level_const = getattr(logging, level, logging.INFO)
 
     root = logging.getLogger()
     root.setLevel(level_const)
 
-    # Remove existing file handlers if any
+    # Remove existing file handlers if any (legacy compatibility)
     for h in list(root.handlers):
         if isinstance(h, RotatingFileHandler):
             try:
@@ -40,19 +45,7 @@ def configure_logging(
         )
         root.addHandler(sh)
 
-    # Add a RotatingFileHandler if requested
-    if log_file:
-        try:
-            fh = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
-            fh.setLevel(level_const)
-            fh.setFormatter(
-                logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-            )
-            root.addHandler(fh)
-        except Exception as e:
-            logging.getLogger("SatoshiRig.logging_config").warning(
-                f"Failed to create file handler {log_file}: {e}"
-            )
+    # File handlers are intentionally not added to ensure Docker log visibility.
 
     # Optionally enable very verbose internal debug logs
     if verbose:

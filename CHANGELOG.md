@@ -5,6 +5,12 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.22] - 2025-11-20
+
+### Fixed
+- **CPU Mining Always Produces Hashes**: Batched CPU mining now tracks the best hash from each batch so `hash_hex`/`nonce_hex` are always defined, preventing the mining loop from stalling at the “hash_hex not defined” guard.
+- **Docker-Only Logging**: Removed the log-file setting from the web UI and configuration. `configure_logging()` now ignores file targets so every log goes straight to stdout/stderr (visible via `docker logs`).
+
 ## [2.25.20] - 2025-01-27
 
 ### Fixed

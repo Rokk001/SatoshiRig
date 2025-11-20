@@ -2,7 +2,11 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.20)
+## Latest Changes (v2.25.22)
+- **CPU Mining Reliability**: Batched CPU hashing now retains the best candidate hash each batch, ensuring `hash_hex`/`nonce_hex` are always defined so the loop never stalls at the guard check.
+- **Docker-First Logging**: Removed the log-file setting from the web UI/config and forced logging to stdout/stderr so all entries appear in `docker logs` without extra setup.
+
+## Previous Changes (v2.25.20)
 - **Dynamic Web Module Import Fix**: Fixed issue where `update_status` and `update_pool_status` would use dummy functions even after web module was initialized
   - Replaced static import with dynamic lazy-loading mechanism
   - Functions now check if web module is available on each call
