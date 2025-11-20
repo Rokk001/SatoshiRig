@@ -2,7 +2,10 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.19)
+## Latest Changes (v2.25.22)
+- **CPU Mining Reliability**: Batched CPU hashing now retains the best candidate hash each batch, ensuring `hash_hex`/`nonce_hex` are always defined so the loop never stalls at the guard check.
+
+## Previous Changes (v2.25.19)
 - **Mining Loop Debugging Improvements**: Added critical initialization and INFO-level logging to diagnose mining loop issues
   - Initialize `merkle_root = None` at the start of each loop iteration to prevent NameError
   - Added INFO-level logs immediately after "Mining iteration 0" to track loop progress

@@ -5,6 +5,11 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.22] - 2025-11-20
+
+### Fixed
+- **CPU Mining Always Produces Hashes**: Batched CPU mining now tracks the best hash from each batch so `hash_hex`/`nonce_hex` are always defined, preventing the mining loop from stalling at the “hash_hex not defined” guard.
+
 ## [2.25.19] - 2025-01-27
 
 ### Added

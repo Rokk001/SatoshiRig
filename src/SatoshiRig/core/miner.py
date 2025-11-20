@@ -2075,6 +2075,7 @@ class Miner:
                         cpu_found = False
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
+                        best_cpu_hash_int = None
 
                         for i_nonce in range(num_nonces_per_batch):
                             nonce_int = (self.cpu_nonce_counter + i_nonce) % (2**32)
@@ -2125,10 +2126,18 @@ class Miner:
                             except ValueError:
                                 continue
 
-                            if cpu_hash_int < target_int:
-                                cpu_found = True
+                            # Track the best CPU hash in the batch so we always have a fallback
+                            if (
+                                cpu_hash_hex is None
+                                or best_cpu_hash_int is None
+                                or cpu_hash_int < best_cpu_hash_int
+                            ):
+                                best_cpu_hash_int = cpu_hash_int
                                 cpu_hash_hex = cpu_hash_little
                                 cpu_nonce_hex = trial_nonce_hex
+
+                            if cpu_hash_int < target_int:
+                                cpu_found = True
                                 self.cpu_nonce_counter = (nonce_int + 1) % (2**32)
                                 break
 
