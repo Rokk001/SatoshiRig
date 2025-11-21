@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.37)
+## Latest Changes (v2.25.38)
+- **Extended Exception Logging for First 5 Iterations**: Added ERROR-level logging for exceptions in nonce conversion for first 5 iterations.
+  - Logs exceptions during nonce conversion for first 5 iterations to identify if loop hangs due to exceptions.
+  - Enables identification of whether loop stalls due to unhandled exceptions in later iterations.
+
+## Previous Changes (v2.25.37)
 - **Extended Logging for First 5 Iterations**: Added comprehensive INFO-level logging for the first 5 iterations to diagnose where loop hangs.
   - Logs after nonce conversion, block header creation, SHA256 computations, and update_status calls for first 5 iterations.
   - Enables precise identification of where the mining loop stalls after the first iteration.

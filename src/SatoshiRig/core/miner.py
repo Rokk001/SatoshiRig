@@ -2173,6 +2173,14 @@ class Miner:
                                     f"LOOP: CPU nonce converted to hex: trial_nonce_hex={trial_nonce_hex}",
                                 )
                             except (ValueError, TypeError) as e:
+                                # CRITICAL: Log exception for first few iterations
+                                if i_nonce < 5:
+                                    self.log.error(
+                                        "CPU: Iteration %d: nonce conversion failed: %s: %s",
+                                        i_nonce,
+                                        type(e).__name__,
+                                        e,
+                                    )
                                 # CRITICAL: Log exception for first iteration
                                 if i_nonce == 0:
                                     self.log.error(
@@ -2243,7 +2251,7 @@ class Miner:
                             if i_nonce < 5:
                                 self.log.info(
                                     "CPU: Iteration %d: computing SHA256 intermediate hash",
-                                    i_nonce
+                                    i_nonce,
                                 )
                             # CRITICAL: Log before first SHA256 for first iteration
                             if i_nonce == 0:

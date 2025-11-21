@@ -5,6 +5,13 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.38] - 2025-11-21
+
+### Added
+- **Extended Exception Logging for First 5 Iterations**: Added ERROR-level logging for exceptions in nonce conversion for first 5 iterations.
+  - Logs exceptions during nonce conversion for first 5 iterations to identify if loop hangs due to exceptions.
+  - Enables identification of whether loop stalls due to unhandled exceptions in later iterations.
+
 ## [2.25.37] - 2025-11-21
 
 ### Added
