@@ -5,6 +5,13 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.25] - 2025-11-21
+
+### Fixed
+- **Web Dashboard JavaScript Syntax**: Removed stray `)`/`.catch` in `toggleMining()` that was left over from the previous `/api/status` request refactor.
+  - Syntax error prevented the entire dashboard script from loading, so `toggleMining`, `showTab`, and other functions were undefined.
+  - With the fix, the dashboard loads, buttons work again, and status updates resume immediately.
+
 ## [2.25.24] - 2025-11-20
 
 ### Changed

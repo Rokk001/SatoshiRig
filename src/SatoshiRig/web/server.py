@@ -2713,65 +2713,56 @@ INDEX_HTML = """
         function toggleMining() {
             // Use current miningPaused state (inverted: paused = not running)
             const isRunning = !miningPaused;
-                    
+            
             if (isRunning) {
-                        // Pause/Stop mining
-                        fetch('/api/stop', { 
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            credentials: 'same-origin'
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                miningPaused = true;
-                                document.getElementById('autoRefreshText').textContent = '▶️ Resume';
-                                // Show success message
-                                console.log('Mining paused successfully');
-                            } else {
-                                // Show error message
-                                alert(`Failed to pause mining: ${data.message || data.error || 'Unknown error'}`);
-                                console.error('Error pausing mining:', data);
-                            }
-                        })
-                        .catch(error => {
-                            alert(`Error pausing mining: ${error.message}`);
-                            console.error('Error stopping mining:', error);
-                        });
+                // Pause/Stop mining
+                fetch('/api/stop', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        miningPaused = true;
+                        document.getElementById('autoRefreshText').textContent = '▶️ Resume';
+                        console.log('Mining paused successfully');
                     } else {
-                        // Resume/Start mining
-                        fetch('/api/start', { 
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            credentials: 'same-origin'
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                miningPaused = false;
-                                document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
-                                // Show success message
-                                console.log('Mining started/resumed successfully');
-                            } else {
-                                // Show error message
-                                alert(`Failed to start mining: ${data.message || data.error || 'Unknown error'}`);
-                                console.error('Error starting mining:', data);
-                            }
-                        })
-                        .catch(error => {
-                            alert(`Error starting mining: ${error.message}`);
-                            console.error('Error starting mining:', error);
-                        });
+                        alert(`Failed to pause mining: ${data.message || data.error || 'Unknown error'}`);
+                        console.error('Error pausing mining:', data);
                     }
                 })
                 .catch(error => {
-                    alert(`Error checking mining status: ${error.message}`);
-                    console.error('Error checking status:', error);
+                    alert(`Error pausing mining: ${error.message}`);
+                    console.error('Error stopping mining:', error);
                 });
+            } else {
+                // Resume/Start mining
+                fetch('/api/start', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        miningPaused = false;
+                        document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
+                        console.log('Mining started/resumed successfully');
+                    } else {
+                        alert(`Failed to start mining: ${data.message || data.error || 'Unknown error'}`);
+                        console.error('Error starting mining:', data);
+                    }
+                })
+                .catch(error => {
+                    alert(`Error starting mining: ${error.message}`);
+                    console.error('Error starting mining:', error);
+                });
+            }
         }
 
         function toggleAutoRefresh() {

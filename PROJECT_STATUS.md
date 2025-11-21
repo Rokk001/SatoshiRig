@@ -1,8 +1,13 @@
 # Project Status
 
-Updated: 2025-11-20
+Updated: 2025-11-21
 
-## Latest Changes (v2.25.24)
+## Latest Changes (v2.25.25)
+- **Web Dashboard JavaScript Fix**: Removed stray `)`/`.catch` from `toggleMining()` (left over from the `/api/status` refactor).
+  - Syntax error prevented the entire dashboard script from loading, so buttons like Pause/Resume or tab switching were broken.
+  - After the fix the dashboard loads again, `toggleMining`/`showTab` are defined, and status updates resume immediately.
+
+## Previous Changes (v2.25.24)
 - **Docker-First Logging**: Removed log file configuration from Settings UI - all logs now exclusively go to Docker logs (stdout/stderr)
   - Removed "Log File" input field from Settings tab
   - `configure_logging()` now ignores `log_file` parameter completely
