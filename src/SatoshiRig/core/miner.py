@@ -2135,9 +2135,9 @@ class Miner:
                                     i_nonce,
                                     num_nonces_per_batch - 1,
                                     (self.cpu_nonce_counter + i_nonce) % (2**32),
-                                    hash_count
+                                    hash_count,
                                 )
-                            
+
                             # CRITICAL: Log first iteration start
                             if i_nonce == 0:
                                 self.log.info(
@@ -2154,6 +2154,13 @@ class Miner:
                                 trial_nonce_hex = self._int_to_little_endian_hex(
                                     nonce_int, 4
                                 )
+                                # CRITICAL: Log after nonce conversion for first few iterations
+                                if i_nonce < 5:
+                                    self.log.info(
+                                        "CPU: Iteration %d: nonce converted: trial_nonce_hex=%s",
+                                        i_nonce,
+                                        trial_nonce_hex,
+                                    )
                                 # CRITICAL: Log after nonce conversion for first iteration
                                 if i_nonce == 0:
                                     self.log.info(
@@ -2183,6 +2190,13 @@ class Miner:
                             trial_block_header_hex = (
                                 block_header_hex[:-8] + trial_nonce_hex
                             )
+                            # CRITICAL: Log after block header creation for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: block header created, length=%d",
+                                    i_nonce,
+                                    len(trial_block_header_hex),
+                                )
                             # CRITICAL: Log after block header creation for first iteration
                             if i_nonce == 0:
                                 self.log.info(
@@ -2225,6 +2239,12 @@ class Miner:
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
+                            # CRITICAL: Log before first SHA256 for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: computing SHA256 intermediate hash",
+                                    i_nonce
+                                )
                             # CRITICAL: Log before first SHA256 for first iteration
                             if i_nonce == 0:
                                 self.log.info(
@@ -2238,6 +2258,13 @@ class Miner:
                             cpu_hash_intermediate = hashlib.sha256(
                                 trial_block_header_bytes
                             ).digest()
+                            # CRITICAL: Log after first SHA256 for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: intermediate hash computed, length=%d",
+                                    i_nonce,
+                                    len(cpu_hash_intermediate),
+                                )
                             # CRITICAL: Log after first SHA256 for first iteration
                             if i_nonce == 0:
                                 self.log.info(
@@ -2319,6 +2346,14 @@ class Miner:
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
+                            # CRITICAL: Log before update_status for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: before update_status, hash_count=%d, total_hash_count=%d",
+                                    i_nonce,
+                                    hash_count,
+                                    self.total_hash_count,
+                                )
                             # CRITICAL: Log before update_status for first iteration
                             if i_nonce == 0:
                                 self.log.info(
@@ -2328,6 +2363,13 @@ class Miner:
                                 )
                             hash_count += 1
                             self.total_hash_count += 1
+                            # CRITICAL: Log before and after update_status call for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: calling update_status('total_hashes', %d)",
+                                    i_nonce,
+                                    self.total_hash_count,
+                                )
                             # CRITICAL: Log before and after update_status call for first iteration
                             if i_nonce == 0:
                                 self.log.info(
@@ -2335,6 +2377,13 @@ class Miner:
                                     self.total_hash_count,
                                 )
                             update_status("total_hashes", self.total_hash_count)
+                            # CRITICAL: Log after update_status for first few iterations
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: update_status completed, hash_count=%d",
+                                    i_nonce,
+                                    hash_count,
+                                )
                             # CRITICAL: Log after update_status for first iteration
                             if i_nonce == 0:
                                 self.log.info(

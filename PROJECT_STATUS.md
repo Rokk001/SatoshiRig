@@ -2,7 +2,13 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.36)
+## Latest Changes (v2.25.37)
+- **Extended Logging for First 5 Iterations**: Added comprehensive INFO-level logging for the first 5 iterations to diagnose where loop hangs.
+  - Logs after nonce conversion, block header creation, SHA256 computations, and update_status calls for first 5 iterations.
+  - Enables precise identification of where the mining loop stalls after the first iteration.
+  - Critical for debugging why mining appears to hang - shows exact progression through each iteration.
+
+## Previous Changes (v2.25.36)
 - **Comprehensive Iteration Start Logging**: Added INFO-level logging at the start of every iteration (first 10 and every 50th) to verify loop progression.
   - Logs iteration number, nonce_int, and hash_count at the start of each iteration.
   - Enables real-time visibility into loop execution and confirms that mining loop continues beyond first iteration.
